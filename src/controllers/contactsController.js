@@ -1,3 +1,5 @@
+const fs    = require('fs').promises;
+const path  = require('path');
 const {
     getAllContacts,
     getContactById,
@@ -61,27 +63,44 @@ const {
   async function editContact(req, res, next) {
     try {
       const id = req.params.id;
+
+      const existing = await getContactById(id);
+      if (!existing) {
+        return res.status(404).json({ ok:false, error:'Contacto no encontrado' });
+      }
+
       const payload = {};
       // Campos de texto
       ['driver_name','phone','email','company','type'].forEach(f => {
         if (req.body[f]) payload[f] = req.body[f];
       });
-      // Imágenes nuevas (sobrescriben si vienen)
-      if (req.files.idPhoto) {
-        payload.id_photo_path = `uploads/${req.files.idPhoto[0].filename}`;
-      }
-      if (req.files.platePhoto) {
-        payload.plate_photo_path = `uploads/${req.files.platePhoto[0].filename}`;
-      }
-      if (Object.keys(payload).length === 0) {
-        return res.status(400).json({ ok:false, error:'Nada para actualizar' });
-      }
-      const updated = await updateContact(id, payload);
-      res.json({ ok: true, data: updated });
-    } catch (err) {
-      next(err);
+
+       if (req.files.idPhoto) {
+      const oldPath = path.join(__dirname, '..', existing.id_photo_path);
+      // Intentar borrar el archivo antiguo (ignorar error si no existe)
+      await fs.unlink(oldPath).catch(() => {});
+      // Guardar la ruta relativa al disco
+      const newFile = req.files.idPhoto[0].filename;
+      payload.id_photo_path = `uploads/${newFile}`;
     }
+
+    if (req.files.platePhoto) {
+      const oldPath = path.join(__dirname, '..', existing.plate_photo_path);
+      await fs.unlink(oldPath).catch(() => {});
+      const newFile = req.files.platePhoto[0].filename;
+      payload.plate_photo_path = `uploads/${newFile}`;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return res.status(400).json({ ok:false, error:'Nada para actualizar' });
+    }
+
+    const updated = await updateContact(id, payload);
+    res.json({ ok: true, data: updated });
+  } catch (err) {
+    next(err);
   }
+}
   
   // DELETE /contacts/:id
   async function removeContact(req, res, next) {
