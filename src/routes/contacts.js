@@ -48,7 +48,7 @@ router.put(
 router.delete(
   '/:id',
   verifyJWT,
-  requireRole('admin','sysadmin'),
+  requireRole('sysadmin'),
   removeContact
 );
 
