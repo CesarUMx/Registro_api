@@ -1,7 +1,6 @@
-// src/controllers/authController.js
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { findByUsername } = require('../models/userModel');
+const { findByUsername, saveToken } = require('../models/userModel');
 
 async function login(req, res, next) {
   try {
@@ -18,10 +17,33 @@ async function login(req, res, next) {
       { expiresIn: '8h' }
     );
 
+    // Almacenar en tabla tokens
+    await saveToken(user.id, token);
+
     res.json({ ok:true, token });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { login };
+async function logout(req, res, next) {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.split(' ')[1];
+    if (!token) {
+      return res.status(400).json({ ok:false, error:'Token no proporcionado' });
+    }
+
+    // Marcar como revocado
+    await pool.query(
+      `UPDATE tokens SET revoked = true WHERE token = $1`,
+      [token]
+    );
+
+    res.json({ ok:true, message:'Desconectado correctamente' });
+  } catch (e) {
+    next(err);
+  }
+}
+
+module.exports = { login, logout };

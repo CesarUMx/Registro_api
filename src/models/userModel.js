@@ -9,4 +9,12 @@ async function findByUsername(username) {
   return res.rows[0];
 }
 
-module.exports = { findByUsername };
+async function saveToken(id, token) {
+  const res = await pool.query(
+    `INSERT INTO tokens (user_id, token)
+     VALUES ($1, $2)`,
+    [id, token]
+  );
+}
+
+module.exports = { findByUsername, saveToken };
