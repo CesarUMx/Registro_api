@@ -9,6 +9,7 @@ const invitesRouter = require('./routes/invites');
 const invitePreregRouter = require('./routes/invitePreregistro');
 const preregistrosRouter = require('./routes/preregistros');
 const registrosRouter = require('./routes/registros');
+const errorHandler = require('./middlewares/errorHandler');
 
 
 app.use(passport.initialize());
@@ -32,6 +33,14 @@ app.use('/contacts', contactRouter);
 app.use('/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
 app.use('/registros', registrosRouter);
+
+// Para cualquier ruta no definida:
+app.use((req, res) => {
+  res.status(404).json({ ok: false, error: 'Ruta no encontrada' });
+});
+
+// Manejar errores
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
