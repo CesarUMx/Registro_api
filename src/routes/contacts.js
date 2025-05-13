@@ -8,9 +8,10 @@ const {
   listContacts,
   showContact,
   createNewContact,
-  updateContactById,
+  editContact,
   removeContact
 } = require('../controllers/contactsController');
+const upload = require('../middlewares/upload');
 
 router.get(
   '/',
@@ -27,13 +28,21 @@ router.get(
 router.post(
   '/',
   verifyJWT,
+  upload.fields([
+    { name: 'idPhoto',   maxCount: 1 },
+    { name: 'platePhoto', maxCount: 1 },
+  ]),
   createNewContact
 );
 
 router.put(
   '/:id',
   verifyJWT,
-  updateContactById
+  upload.fields([
+    { name: 'idPhoto',   maxCount: 1 },
+    { name: 'platePhoto', maxCount: 1 },
+  ]),
+  editContact
 );
 
 router.delete(

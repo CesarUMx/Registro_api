@@ -28,20 +28,18 @@ async function createContact({ driver_name, id_photo_path, plate_photo_path, pho
   return rows[0];
 }
 
-async function updateContact(id, { driver_name, id_photo_path, plate_photo_path, phone, email, company, type }) {
-  const { rows } = await pool.query(`
-    UPDATE contacts
-    SET driver_name = $2,
-        id_photo_path = $3,
-        plate_photo_path = $4,
-        phone = $5,
-        email = $6,
-        company = $7,
-        type = $8,
-        updated_at = NOW()
-    WHERE id = $1
-    RETURNING *
-  `, [id, driver_name, id_photo_path, plate_photo_path, phone, email, company, type]);
+async function updateContact(id, data) {
+  const keys   = Object.keys(data);
+  const sets   = keys.map((k,i) => `${k}=$${i+1}`).join(',');
+  const values = keys.map(k => data[k]);
+
+  const { rows } = await pool.query(
+    `UPDATE contacts
+       SET ${sets}, updated_at=now()
+     WHERE id=$${keys.length+1}
+     RETURNING *`,
+    [...values, id]
+  );
   return rows[0];
 }
 
