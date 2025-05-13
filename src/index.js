@@ -4,17 +4,20 @@ const express = require('express');
 const app     = express();
 const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
-const upload = require('./middlewares/upload');
 const contactRouter = require('./routes/contacts');
 const invitesRouter = require('./routes/invites');
+const invitePreregRouter = require('./routes/invitePreregistro');
 
 
 app.use(passport.initialize());
 app.use(express.json());
 
+// rutas no protegidas
 app.get('/', (req, res) => {
   res.json({ ok: true, message: 'API corriendo correctamente' });
 });
+app.use('/preregistro', invitePreregRouter);
+
 
 //rutas de autenticación
 app.use('/auth', authRouter);
