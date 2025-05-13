@@ -8,6 +8,7 @@ const contactRouter = require('./routes/contacts');
 const invitesRouter = require('./routes/invites');
 const invitePreregRouter = require('./routes/invitePreregistro');
 const preregistrosRouter = require('./routes/preregistros');
+const registrosRouter = require('./routes/registros');
 
 
 app.use(passport.initialize());
@@ -30,6 +31,7 @@ app.get('/login-failure', (req, res) => {
 app.use('/contacts', contactRouter);
 app.use('/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
+app.use('/registros', registrosRouter);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

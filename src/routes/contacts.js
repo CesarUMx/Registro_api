@@ -28,6 +28,7 @@ router.get(
 router.post(
   '/',
   verifyJWT,
+  requireRole('sysadmin', 'admin'),
   upload.fields([
     { name: 'idPhoto',   maxCount: 1 },
     { name: 'platePhoto', maxCount: 1 },
@@ -38,6 +39,7 @@ router.post(
 router.put(
   '/:id',
   verifyJWT,
+  requireRole('sysadmin', 'admin'),
   upload.fields([
     { name: 'idPhoto',   maxCount: 1 },
     { name: 'platePhoto', maxCount: 1 },
