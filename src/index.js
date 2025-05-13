@@ -6,6 +6,7 @@ const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
 const upload = require('./middlewares/upload');
 const contactRouter = require('./routes/contacts');
+const invitesRouter = require('./routes/invites');
 
 
 app.use(passport.initialize());
@@ -23,7 +24,7 @@ app.get('/login-failure', (req, res) => {
 
 //rutas protegidas
 app.use('/contacts', contactRouter);
-  
+app.use('/invites', invitesRouter);  
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
