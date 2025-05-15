@@ -27,8 +27,12 @@ async (req, res, next) => {
       [req.user.id, token]
     );
 
-    // 3) Devolverlo al cliente
-    res.json({ ok: true, token });
+    // 3) Redirigir al frontend con el token
+    // Obtenemos la URL del frontend desde las variables de entorno o usamos la URL de Vite por defecto
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    
+    // Redirigimos al frontend con el token como parámetro de consulta
+    res.redirect(`${frontendUrl}?token=${token}&role=${req.user.role}`);
   } catch (err) {
     next(err);
   }

@@ -1,6 +1,7 @@
 // src/index.js
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const app     = express();
 const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
@@ -11,28 +12,41 @@ const preregistrosRouter = require('./routes/preregistros');
 const registrosRouter = require('./routes/registros');
 const errorHandler = require('./middlewares/errorHandler');
 
+// Configuración CORS
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+
 
 app.use(passport.initialize());
 app.use(express.json());
 
-// rutas no protegidas
+// Ruta raíz
 app.get('/', (req, res) => {
   res.json({ ok: true, message: 'API corriendo correctamente' });
 });
-app.use('/preregistro', invitePreregRouter);
 
-
-//rutas de autenticación
+// Rutas de autenticación (sin prefijo /api para mantener compatibilidad con Google OAuth)
 app.use('/auth', authRouter);
 app.get('/login-failure', (req, res) => {
   res.status(401).json({ ok: false, error: 'Autenticación con Google fallida' });
 });
 
-//rutas protegidas
-app.use('/contacts', contactRouter);
-app.use('/invites', invitesRouter);  
-app.use('/preregistros', preregistrosRouter);
-app.use('/registros', registrosRouter);
+// Prefijo /api para todas las rutas de la API
+const apiRouter = express.Router();
+
+// Rutas no protegidas
+apiRouter.use('/preregistro', invitePreregRouter);
+
+// Rutas protegidas
+apiRouter.use('/contacts', contactRouter);
+apiRouter.use('/invites', invitesRouter);  
+apiRouter.use('/preregistros', preregistrosRouter);
+apiRouter.use('/registros', registrosRouter);
+
+// Aplicar el prefijo /api a todas las rutas de la API
+app.use('/api', apiRouter);
 
 // Para cualquier ruta no definida:
 app.use((req, res) => {
