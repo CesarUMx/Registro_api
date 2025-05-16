@@ -1,4 +1,3 @@
-const { createContact } = require('../models/contactModel');
 const {
   getAllPreregistros,
   getPreregistroById,
