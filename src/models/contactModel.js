@@ -23,9 +23,9 @@ async function createContact({ driver_name, id_photo_path, plate_photo_path, pho
       (driver_name, id_photo_path, plate_photo_path, phone, email, company, type)
     VALUES
       ($1,$2,$3,$4,$5,$6,$7)
-    RETURNING *
+    RETURNING id
   `, [driver_name, id_photo_path, plate_photo_path, phone, email, company, type]);
-  return rows[0];
+  return rows[0].id;
 }
 
 async function updateContact(id, data) {
