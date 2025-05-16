@@ -10,6 +10,7 @@ const invitesRouter = require('./routes/invites');
 const invitePreregRouter = require('./routes/invitePreregistro');
 const preregistrosRouter = require('./routes/preregistros');
 const registrosRouter = require('./routes/registros');
+const userManagementRouter = require('./routes/userManagementRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 // Configuración CORS
@@ -34,19 +35,16 @@ app.get('/login-failure', (req, res) => {
 });
 
 // Prefijo /api para todas las rutas de la API
-const apiRouter = express.Router();
 
 // Rutas no protegidas
-apiRouter.use('/preregistro', invitePreregRouter);
+app.use('/preregistro', invitePreregRouter);
 
 // Rutas protegidas
-apiRouter.use('/contacts', contactRouter);
-apiRouter.use('/invites', invitesRouter);  
-apiRouter.use('/preregistros', preregistrosRouter);
-apiRouter.use('/registros', registrosRouter);
-
-// Aplicar el prefijo /api a todas las rutas de la API
-app.use('/api', apiRouter);
+app.use('/contacts', contactRouter);
+app.use('/invites', invitesRouter);  
+app.use('/preregistros', preregistrosRouter);
+app.use('/registros', registrosRouter);
+app.use('/users', userManagementRouter);
 
 // Para cualquier ruta no definida:
 app.use((req, res) => {
