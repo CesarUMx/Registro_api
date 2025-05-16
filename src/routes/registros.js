@@ -10,13 +10,16 @@ const {
   removeRegistro
 } = require('../controllers/registroController');
 
-// Crear registro en puerta (solo guardias)
+// Crear registro en puerta con visitante y conductor opcional
 router.post(
   '/',
   verifyJWT,
   requireRole('guardia'),
   upload.fields([
-    { name: 'idPhoto',   maxCount: 1 },
+    // Para el visitante
+    { name: 'idPhoto', maxCount: 1 },
+    // Para el conductor (opcionales)
+    { name: 'driverIdPhoto', maxCount: 1 },
     { name: 'platePhoto', maxCount: 1 }
   ]),
   createRegistroByGuard

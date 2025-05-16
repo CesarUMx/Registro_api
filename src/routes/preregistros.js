@@ -26,13 +26,16 @@ router.get(
   showPreregistro
 );
 
-// Crear, con imágenes
+// Crear preregistro con visitante y conductor opcional
 router.post(
   '/',
   verifyJWT,
   requireRole('admin','sysadmin'),
   upload.fields([
-    { name: 'idPhoto',   maxCount: 1 },
+    // Para el visitante
+    { name: 'idPhoto', maxCount: 1 },
+    // Para el conductor (opcionales)
+    { name: 'driverIdPhoto', maxCount: 1 },
     { name: 'platePhoto', maxCount: 1 }
   ]),
   createPreregistroByAdmin

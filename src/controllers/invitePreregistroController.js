@@ -1,47 +1,144 @@
 // src/controllers/invitePreregistroController.js
-const poolModel = require('../models/invitePreregistroModel');
+const pool = require('../config/db');
+const {
+  lockInviteByToken,
+  markInviteUsed,
+  createVisitor,
+  createDriver,
+  associateDriverToVisitor,
+  createPreregistro,
+  InvitePreregistroError
+} = require('../models/invitePreregistroModel');
 const upload = require('../middlewares/upload');
 
+/**
+ * Maneja el proceso de preregistro a través de una invitación
+ * POST /invite/preregistro
+ */
 async function handleInvitePreregistro(req, res, next) {
   const token = req.query.token || req.body.token;
-  if (!token) return res.status(400).json({ ok:false, error:'Falta token de invitación' });
+  if (!token) {
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'Falta token de invitación',
+      code: 'MISSING_TOKEN'
+    });
+  }
 
   try {
-    await poolModel.pool.query('BEGIN');
+    await pool.query('BEGIN');
 
     // 1. Bloquear y obtener invite
-    const invite = await poolModel.lockInviteByToken(token);
-    if (!invite) throw { status:404, message:'Invite no encontrado' };
-    if (invite.used) throw { status:410, message:'Invite ya usado' };
+    const invite = await lockInviteByToken(token);
+    if (!invite) {
+      await pool.query('ROLLBACK');
+      return res.status(404).json({ 
+        ok: false, 
+        error: 'Invitación no encontrada',
+        code: 'INVITE_NOT_FOUND'
+      });
+    }
+    
+    if (invite.used) {
+      await pool.query('ROLLBACK');
+      return res.status(410).json({ 
+        ok: false, 
+        error: 'Esta invitación ya ha sido utilizada',
+        code: 'INVITE_ALREADY_USED'
+      });
+    }
 
-    // 2. Crear contacto
-    const contactId = await poolModel.createContact({
-      driver_name:    req.body.driver_name,
-      id_photo:       req.files.idPhoto[0].filename,
-      plate_photo:    req.files.platePhoto[0].filename,
-      phone:          req.body.phone,
-      email:          req.body.email,
-      company:        req.body.company,
-      type:           req.body.type
+    // 2. Crear visitante
+    if (!req.body.visitor_name) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'El nombre del visitante es obligatorio',
+        code: 'MISSING_REQUIRED_FIELD'
+      });
+    }
+    
+    if (!req.files?.idPhoto) {
+      await pool.query('ROLLBACK');
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'La foto de identificación es obligatoria',
+        code: 'MISSING_REQUIRED_FILE'
+      });
+    }
+    
+    const visitorId = await createVisitor({
+      visitor_name: req.body.visitor_name,
+      visitor_id_photo_path: `uploads/${req.files.idPhoto[0].filename}`,
+      phone: req.body.phone,
+      email: req.body.email,
+      company: req.body.company,
+      type: req.body.type || 'visitante'
     });
 
-    // 3. Crear preregistro
-    const preregistro = await poolModel.createPreregistro({
-      admin_id:        invite.admin_id,
-      invite_id:       invite.id,
-      contact_id:      contactId,
-      scheduled_date:  req.body.scheduled_date,
-      reason:          req.body.reason
+    // 3. Crear conductor (opcional)
+    let driverId;
+    if (req.body.create_driver && req.body.driver_name) {
+      if (!req.files?.platePhoto) {
+        await pool.query('ROLLBACK');
+        return res.status(400).json({ 
+          ok: false, 
+          error: 'La foto de la placa es obligatoria para crear un conductor',
+          code: 'MISSING_REQUIRED_FILE'
+        });
+      }
+      
+      // Si no se envió una foto de ID específica para el conductor, usar la del visitante
+      const driverIdPhoto = req.files?.driverIdPhoto ? 
+        req.files.driverIdPhoto[0].filename : 
+        req.files.idPhoto[0].filename;
+      
+      driverId = await createDriver({
+        driver_name: req.body.driver_name,
+        driver_id_photo_path: `uploads/${driverIdPhoto}`,
+        plate_photo_path: `uploads/${req.files.platePhoto[0].filename}`
+      });
+      
+      // Asociar conductor al visitante
+      await associateDriverToVisitor(visitorId, driverId, true); // true = conductor principal
+    }
+
+    // 4. Crear preregistro
+    const preregistro = await createPreregistro({
+      admin_id: invite.admin_id,
+      invite_id: invite.id,
+      visitor_id: visitorId,
+      date: req.body.date || req.body.scheduled_date, // Compatibilidad con ambos nombres
+      time: req.body.time,
+      reason: req.body.reason,
+      destination: req.body.destination
     });
 
-    // 4. Marcar invite usado
-    await poolModel.markInviteUsed(invite.id);
+    // 5. Marcar invite como usado
+    await markInviteUsed(invite.id);
 
-    await poolModel.pool.query('COMMIT');
-    res.status(201).json({ ok:true, data: preregistro });
+    await pool.query('COMMIT');
+    res.status(201).json({ ok: true, data: preregistro });
   } catch (err) {
-    await poolModel.pool.query('ROLLBACK');
-    if (err.status) return res.status(err.status).json({ ok:false, error: err.message });
+    await pool.query('ROLLBACK');
+    
+    if (err instanceof InvitePreregistroError) {
+      return res.status(err.status).json({ 
+        ok: false, 
+        error: err.message,
+        code: err.code
+      });
+    }
+    
+    // Para otros tipos de errores
+    if (err.status) {
+      return res.status(err.status).json({ 
+        ok: false, 
+        error: err.message,
+        code: 'UNKNOWN_ERROR'
+      });
+    }
+    
     next(err);
   }
 }

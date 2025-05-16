@@ -5,12 +5,16 @@ const cors = require('cors');
 const app     = express();
 const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
-const contactRouter = require('./routes/contacts');
 const invitesRouter = require('./routes/invites');
 const invitePreregRouter = require('./routes/invitePreregistro');
 const preregistrosRouter = require('./routes/preregistros');
 const registrosRouter = require('./routes/registros');
 const userManagementRouter = require('./routes/userManagementRoutes');
+
+// Nuevas rutas para visitantes y conductores
+const visitorRouter = require('./routes/visitors');
+const driverRouter = require('./routes/drivers');
+const visitorDriverRouter = require('./routes/visitorDrivers');
 const errorHandler = require('./middlewares/errorHandler');
 
 // Configuración CORS
@@ -22,6 +26,9 @@ app.use(cors({
 
 app.use(passport.initialize());
 app.use(express.json());
+
+// Servir archivos estáticos desde la carpeta uploads
+app.use('/uploads', express.static('uploads'));
 
 // Ruta raíz
 app.get('/', (req, res) => {
@@ -40,7 +47,9 @@ app.get('/login-failure', (req, res) => {
 app.use('/preregistro', invitePreregRouter);
 
 // Rutas protegidas
-app.use('/contacts', contactRouter);
+app.use('/visitors', visitorRouter);
+app.use('/drivers', driverRouter);
+app.use('/', visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
 app.use('/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
 app.use('/registros', registrosRouter);
