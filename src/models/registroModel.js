@@ -31,54 +31,56 @@ function validateId(id) {
 }
 
 /**
- * Crea un nuevo registro de entrada
+ * Crea un nuevo registro en la caseta (primer filtro)
  * @param {Object} data - Datos del registro
  * @param {number|null} data.preregistro_id - ID del preregistro (opcional)
- * @param {number} data.guard_user_id - ID del guardia
- * @param {number} data.visitor_id - ID del visitante
- * @param {string} data.reason - Motivo de la visita
+ * @param {number|null} data.admin_id - ID del administrador que creó el preregistro (opcional)
+ * @param {number} data.gate_guard_id - ID del guardia de caseta
+ * @param {number} data.visitor_id - ID del visitante (puede ser null si solo se registra el vehículo)
+ * @param {string} data.reason - Motivo de la visita (opcional en este punto)
  * @returns {Promise<Object>} El registro creado
  * @throws {RegistroError} Si ocurre un error
  */
-async function createRegistro({ preregistro_id, guard_user_id, visitor_id, reason }) {
+async function createGateRegistro({ preregistro_id, admin_id, gate_guard_id, visitor_id, reason, driver_id }) {
   try {
+    // Depuración: mostrar los parámetros recibidos
+    console.log('Parámetros recibidos en createGateRegistro:');
+    console.log('preregistro_id:', preregistro_id);
+    console.log('admin_id:', admin_id);
+    console.log('gate_guard_id:', gate_guard_id);
+    console.log('visitor_id:', visitor_id);
+    console.log('reason:', reason);
     // Validar datos obligatorios
-    if (!guard_user_id) {
+    if (!gate_guard_id) {
       throw new RegistroError(
-        'El ID del guardia es obligatorio.',
+        'El ID del guardia de caseta es obligatorio.',
         'MISSING_REQUIRED_FIELD',
         400
       );
     }
     
-    if (!visitor_id) {
-      throw new RegistroError(
-        'El ID del visitante es obligatorio.',
-        'MISSING_REQUIRED_FIELD',
-        400
+    // Si se proporciona visitor_id, validar que exista
+    if (visitor_id) {
+      const visitorExists = await pool.query(
+        'SELECT id FROM visitors WHERE id = $1',
+        [visitor_id]
       );
-    }
-    
-    // Validar que el visitante exista
-    const visitorExists = await pool.query(
-      'SELECT id FROM visitors WHERE id = $1',
-      [visitor_id]
-    );
-    
-    if (visitorExists.rows.length === 0) {
-      throw new RegistroError(
-        `No existe un visitante con ID ${visitor_id}`,
-        'VISITOR_NOT_FOUND',
-        404
-      );
+      
+      if (visitorExists.rows.length === 0) {
+        throw new RegistroError(
+          `No existe un visitante con ID ${visitor_id}`,
+          'VISITOR_NOT_FOUND',
+          404
+        );
+      }
     }
     
     const { rows } = await pool.query(
       `INSERT INTO registro
-         (preregistro_id, guard_user_id, visitor_id, reason)
-       VALUES ($1, $2, $3, $4)
+         (preregistro_id, admin_id, gate_guard_id, visitor_id, reason, driver_id, gate_entry_time, status)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'active')
        RETURNING *`,
-      [preregistro_id, guard_user_id, visitor_id, reason]
+      [preregistro_id, admin_id, gate_guard_id, visitor_id, reason, driver_id]
     );
     
     return rows[0];
@@ -97,9 +99,324 @@ async function createRegistro({ preregistro_id, guard_user_id, visitor_id, reaso
       );
     }
     
-    console.error('Error en createRegistro:', error);
+    console.error('Error en createGateRegistro:', error);
     throw new RegistroError(
-      'Error al crear el registro.',
+      'Error al crear el registro en caseta.',
+      'DATABASE_ERROR',
+      500
+    );
+  }
+}
+
+/**
+ * Actualiza un registro con los datos de entrada al edificio (segundo filtro)
+ * @param {number} id - ID del registro a actualizar
+ * @param {Object} data - Datos para actualizar
+ * @param {number} data.entry_guard_id - ID del guardia de entrada
+ * @param {number} data.visitor_id - ID del visitante (requerido si no se proporcionó en la caseta)
+ * @param {string} data.reason - Motivo de la visita
+ * @param {string} data.notes - Notas adicionales (opcional)
+ * @returns {Promise<Object>} El registro actualizado
+ * @throws {RegistroError} Si ocurre un error
+ */
+async function updateWithBuildingEntry(id, { entry_guard_id, visitor_id, reason, notes }) {
+  try {
+    const validId = validateId(id);
+    
+    // Verificar que el registro existe
+    const registro = await getRegistroById(validId);
+    if (!registro) {
+      throw new RegistroError(
+        `No existe un registro con ID ${validId}`,
+        'REGISTRO_NOT_FOUND',
+        404
+      );
+    }
+    
+    // Validar datos obligatorios
+    if (!entry_guard_id) {
+      throw new RegistroError(
+        'El ID del guardia de entrada es obligatorio.',
+        'MISSING_REQUIRED_FIELD',
+        400
+      );
+    }
+    
+    // Si no hay visitor_id en el registro original, debe proporcionarse ahora
+    if (!registro.visitor_id && !visitor_id) {
+      throw new RegistroError(
+        'El ID del visitante es obligatorio para completar el registro.',
+        'MISSING_REQUIRED_FIELD',
+        400
+      );
+    }
+    
+    // Si se proporciona visitor_id, validar que exista
+    if (visitor_id) {
+      const visitorExists = await pool.query(
+        'SELECT id FROM visitors WHERE id = $1',
+        [visitor_id]
+      );
+      
+      if (visitorExists.rows.length === 0) {
+        throw new RegistroError(
+          `No existe un visitante con ID ${visitor_id}`,
+          'VISITOR_NOT_FOUND',
+          404
+        );
+      }
+    }
+    
+    // Actualizar el registro con los datos de entrada al edificio
+    // Nota: person_visited no se guarda en la tabla registro, solo se usa en el controlador
+    const { rows } = await pool.query(
+      `UPDATE registro
+       SET entry_guard_id = $1,
+           visitor_id = COALESCE($2, visitor_id),
+           reason = COALESCE($3, reason),
+           notes = $4,
+           building_entry_time = NOW(),
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [entry_guard_id, visitor_id, reason, notes, validId]
+    );
+    
+    if (rows.length === 0) {
+      throw new RegistroError(
+        'No se pudo actualizar el registro.',
+        'UPDATE_FAILED',
+        500
+      );
+    }
+    
+    return rows[0];
+  } catch (error) {
+    // Si ya es un error personalizado, propagarlo
+    if (error instanceof RegistroError) {
+      throw error;
+    }
+    
+    // Manejar errores específicos de PostgreSQL
+    if (error.code === '23503') { // Foreign key violation
+      throw new RegistroError(
+        'El preregistro, guardia o visitante especificado no existe.',
+        'FOREIGN_KEY_VIOLATION',
+        400
+      );
+    }
+    
+    console.error('Error en updateWithBuildingEntry:', error);
+    throw new RegistroError(
+      'Error al actualizar el registro con datos de entrada al edificio.',
+      'DATABASE_ERROR',
+      500
+    );
+  }
+}
+
+/**
+ * Registra la salida del edificio
+ * @param {number} id - ID del registro
+ * @param {Object} data - Datos adicionales
+ * @param {number} data.guard_id - ID del guardia que registra la salida
+ * @returns {Promise<Object>} El registro actualizado
+ * @throws {RegistroError} Si ocurre un error
+ */
+async function registerBuildingExit(id, { guard_id }) {
+  try {
+    const validId = validateId(id);
+    
+    // Verificar que el registro existe y está activo
+    const registro = await getRegistroById(validId);
+    if (!registro) {
+      throw new RegistroError(
+        `No existe un registro con ID ${validId}`,
+        'REGISTRO_NOT_FOUND',
+        404
+      );
+    }
+    if (registro.status !== 'active') {
+      throw new RegistroError(
+        'Este registro ya no está activo.',
+        'INVALID_STATUS',
+        400
+      );
+    }
+    
+    if (!registro.building_entry_time) {
+      throw new RegistroError(
+        'No se puede registrar la salida del edificio sin haber registrado la entrada.',
+        'INVALID_OPERATION',
+        400
+      );
+    }
+    
+    // Validar datos obligatorios
+    if (!guard_id) {
+      throw new RegistroError(
+        'El ID del guardia es obligatorio.',
+        'MISSING_REQUIRED_FIELD',
+        400
+      );
+    }
+    
+    let completeRegistro = "active";
+    if(registro.gate_entry_time === null){
+      completeRegistro = "completed";
+    }
+
+    // Actualizar el registro con la hora de salida del edificio
+    const { rows } = await pool.query(
+      `UPDATE registro
+       SET building_exit_time = NOW(),
+           updated_at = NOW(),
+           status = $2
+       WHERE id = $1
+       RETURNING *`,
+      [validId, completeRegistro]
+    );
+    
+    if (rows.length === 0) {
+      throw new RegistroError(
+        'No se pudo actualizar el registro.',
+        'UPDATE_FAILED',
+        500
+      );
+    }
+    
+    return rows[0];
+  } catch (error) {
+    // Si ya es un error personalizado, propagarlo
+    if (error instanceof RegistroError) {
+      throw error;
+    }
+    
+    console.error('Error en registerBuildingExit:', error);
+    throw new RegistroError(
+      'Error al registrar la salida del edificio.',
+      'DATABASE_ERROR',
+      500
+    );
+  }
+}
+
+/**
+ * Registra la salida por la caseta y completa el registro
+ * @param {number} id - ID del registro
+ * @param {Object} data - Datos adicionales
+ * @param {number} data.guard_id - ID del guardia que registra la salida
+ * @returns {Promise<Object>} El registro actualizado
+ * @throws {RegistroError} Si ocurre un error
+ */
+async function registerGateExit(id, { guard_id }) {
+  try {
+    const validId = validateId(id);
+    
+    // Verificar que el registro existe y está activo
+    const registro = await getRegistroById(validId);
+    if (!registro) {
+      throw new RegistroError(
+        `No existe un registro con ID ${validId}`,
+        'REGISTRO_NOT_FOUND',
+        404
+      );
+    }
+    
+    if (registro.status !== 'active') {
+      throw new RegistroError(
+        'Este registro ya no está activo.',
+        'INVALID_STATUS',
+        400
+      );
+    }
+    
+    // Validar datos obligatorios
+    if (!guard_id) {
+      throw new RegistroError(
+        'El ID del guardia es obligatorio.',
+        'MISSING_REQUIRED_FIELD',
+        400
+      );
+    }
+    
+    // Actualizar el registro con la hora de salida por la caseta y completar
+    const { rows } = await pool.query(
+      `UPDATE registro
+       SET gate_exit_time = NOW(),
+           exited_at = NOW(),
+           status = 'completed',
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [validId]
+    );
+    
+    if (rows.length === 0) {
+      throw new RegistroError(
+        'No se pudo actualizar el registro.',
+        'UPDATE_FAILED',
+        500
+      );
+    }
+    
+    return rows[0];
+  } catch (error) {
+    // Si ya es un error personalizado, propagarlo
+    if (error instanceof RegistroError) {
+      throw error;
+    }
+    
+    console.error('Error en registerGateExit:', error);
+    throw new RegistroError(
+      'Error al registrar la salida por la caseta.',
+      'DATABASE_ERROR',
+      500
+    );
+  }
+}
+
+/**
+ * Busca un registro por código de preregistro
+ * @param {string} code - Código del preregistro (formato PR-123)
+ * @returns {Promise<Object|null>} El registro encontrado o null
+ * @throws {RegistroError} Si ocurre un error
+ */
+async function findByPreregistroCode(code) {
+  try {
+    // Extraer el ID numérico del código (PR-123 -> 123)
+    const matches = code.match(/PR-(\d+)/);
+    if (!matches || !matches[1]) {
+      throw new RegistroError(
+        'Formato de código inválido. Debe ser PR-XXX donde XXX es el ID del preregistro.',
+        'INVALID_CODE_FORMAT',
+        400
+      );
+    }
+    
+    const preregistroId = parseInt(matches[1], 10);
+    
+    // Buscar registros activos con ese preregistro_id
+    const { rows } = await pool.query(
+      `SELECT r.*, v.visitor_name, v.phone, v.email, v.company, v.type
+       FROM registro r
+       LEFT JOIN visitors v ON r.visitor_id = v.id
+       WHERE r.preregistro_id = $1 AND r.status = 'active'
+       ORDER BY r.created_at DESC
+       LIMIT 1`,
+      [preregistroId]
+    );
+    
+    return rows[0] || null;
+  } catch (error) {
+    // Si ya es un error personalizado, propagarlo
+    if (error instanceof RegistroError) {
+      throw error;
+    }
+    
+    console.error('Error en findByPreregistroCode:', error);
+    throw new RegistroError(
+      'Error al buscar registro por código de preregistro.',
       'DATABASE_ERROR',
       500
     );
@@ -139,15 +456,27 @@ async function getAllRegistros() {
 async function getRegistroById(id) {
   try {
     const validId = validateId(id);
+    console.log('Valid ID:', validId);
     
     const { rows } = await pool.query(`
-      SELECT r.*, v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path
+      SELECT r.*
       FROM registro r
-      JOIN visitors v ON r.visitor_id = v.id
       WHERE r.id = $1
     `, [validId]);
+
+    console.log('Rows:', rows);
+    if (rows[0].visitor_id !== null) {
+      console.log('visitor_id found, fetching visitor details');
+      const { rows } = await pool.query(`
+        SELECT r.*, v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path
+        FROM registro r
+        JOIN visitors v ON r.visitor_id = v.id
+        WHERE r.id = $1
+      `, [validId]);
+      return rows[0];
+    }
     
-    return rows[0] || null;
+    return rows[0];
   } catch (error) {
     // Si ya es un error personalizado, propagarlo
     if (error instanceof RegistroError) {
@@ -279,7 +608,11 @@ async function deleteRegistroById(id) {
 }
 
 module.exports = {
-  createRegistro,
+  createGateRegistro,
+  updateWithBuildingEntry,
+  registerBuildingExit,
+  registerGateExit,
+  findByPreregistroCode,
   getAllRegistros,
   getRegistroById,
   updateRegistroById,

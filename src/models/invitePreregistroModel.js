@@ -278,16 +278,16 @@ async function associateDriverToVisitor(visitorId, driverId, isPrimary = false) 
  * @param {number} data.admin_id - ID del administrador
  * @param {number} data.invite_id - ID de la invitación
  * @param {number} data.visitor_id - ID del visitante
- * @param {string} data.date - Fecha del preregistro
- * @param {string} data.time - Hora del preregistro
+ * @param {string} data.scheduled_date - Fecha programada del preregistro
  * @param {string} data.reason - Motivo de la visita
- * @param {string} data.destination - Destino de la visita
+ * @param {string} data.person_visited - Persona que se visita
+ * @param {boolean} data.parking_access - Indica si necesita acceso al estacionamiento
  * @returns {Promise<Object>} El preregistro creado
  * @throws {InvitePreregistroError} Si ocurre un error
  */
 async function createPreregistro(data) {
   try {
-    const { admin_id, invite_id, visitor_id, date, time, reason, destination } = data;
+    const { admin_id, invite_id, visitor_id, scheduled_date, reason, person_visited, parking_access } = data;
     
     // Validar datos obligatorios
     if (!admin_id) {
@@ -308,10 +308,10 @@ async function createPreregistro(data) {
     
     const res = await pool.query(
       `INSERT INTO preregistro
-         (admin_id, invite_id, visitor_id, date, time, reason, destination)
+         (admin_id, invite_id, visitor_id, scheduled_date, reason, person_visited, parking_access)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
-      [admin_id, invite_id, visitor_id, date, time, reason, destination]
+      [admin_id, invite_id, visitor_id, scheduled_date, reason, person_visited, parking_access || false]
     );
     
     return res.rows[0];

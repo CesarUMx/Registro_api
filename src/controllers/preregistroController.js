@@ -121,8 +121,15 @@ async function createPreregistroByAdmin(req, res, next) {
       });
     }
     
-    // 2) Verificar si se está creando un conductor
-    if (req.body.create_driver && req.body.driver_name) {
+    // 2) Verificar si se está usando un conductor existente o creando uno nuevo
+    if (req.body.driver_id) {
+      // Usar conductor existente
+      driverId = req.body.driver_id;
+      
+      // No necesitamos verificar la asociación aquí, ya que el conductor ya está asociado al visitante
+      // Solo establecemos parking_access a true porque hay un conductor
+    } else if (req.body.driver_name) {
+      // Crear un nuevo conductor
       // Verificar que se hayan enviado las fotos necesarias
       if (!req.files?.platePhoto) {
         return res.status(400).json({ 
@@ -147,15 +154,18 @@ async function createPreregistroByAdmin(req, res, next) {
       // Asociar conductor al visitante
       await associateDriverToVisitor(visitorId, driverId, true); // true = conductor principal
     }
+    // Si no hay driver_id ni driver_name, no se crea ni asocia ningún conductor
     
     // 3) Crear preregistro
     const preregistroData = {
       admin_id: adminId,
       visitor_id: visitorId,
-      date: req.body.date || req.body.scheduled_date, // Compatibilidad con ambos nombres
-      time: req.body.time,
+      scheduled_date: req.body.scheduled_date || req.body.date, // Compatibilidad con ambos nombres
       reason: req.body.reason,
-      destination: req.body.destination
+      person_visited: req.body.person_visited, // Persona que se visita
+      // Si se proporciona un conductor (nuevo o existente), automáticamente establecer parking_access a true
+      parking_access: req.body.driver_id || req.body.driver_name ? true : (req.body.parking_access === 'true' || req.body.parking_access === true),
+      invite_id: req.body.invite_id || null
     };
     
     const preregistroId = await createPreregistro(preregistroData);
@@ -163,7 +173,17 @@ async function createPreregistroByAdmin(req, res, next) {
     // 4) Obtener el preregistro completo para devolverlo
     const preregistro = await getPreregistroById(preregistroId);
 
-    res.status(201).json({ ok: true, data: preregistro });
+    res.status(201).json({ 
+      ok: true, 
+      data: {
+        id: preregistroId,
+        code: `PR-${preregistroId}`, // Código formateado para el guardia
+        message: 'Preregistro creado exitosamente. Proporcione este código al guardia.',
+        visitor_id: visitorId,
+        driver_id: driverId || null,
+        parking_access: preregistroData.parking_access
+      }
+    });
   } catch (err) {
     if (err instanceof PreregistroError || 
         err instanceof VisitorError || 
@@ -197,15 +217,38 @@ async function editPreregistro(req, res, next) {
       });
     }
     
+    // Imprimir el preregistro actual para depuración
+    console.log('Preregistro actual:', preregistro);
+    console.log('Datos recibidos en el body:', req.body);
+    
     // Preparar los datos a actualizar
     const payload = {};
     
-    // Permitir actualizar fecha, hora, motivo y destino
-    if (req.body.date) payload.date = req.body.date;
-    if (req.body.scheduled_date) payload.date = req.body.scheduled_date; // Compatibilidad
-    if (req.body.time) payload.time = req.body.time;
-    if (req.body.reason) payload.reason = req.body.reason;
-    if (req.body.destination) payload.destination = req.body.destination;
+    // Permitir actualizar solo los campos que sabemos que existen en la tabla
+    if (req.body.scheduled_date) {
+      payload.scheduled_date = req.body.scheduled_date;
+    } else if (req.body.date) {
+      payload.scheduled_date = req.body.date; // Compatibilidad
+    }
+    
+    if (req.body.reason) {
+      payload.reason = req.body.reason;
+    }
+    
+    if (req.body.person_visited) {
+      payload.person_visited = req.body.person_visited;
+    }
+    
+    // Actualizar parking_access si se proporciona
+    if (req.body.parking_access !== undefined) {
+      if (req.body.parking_access === 'true' || req.body.parking_access === true) {
+        payload.parking_access = true;
+      } else {
+        payload.parking_access = false;
+      }
+    }
+    
+    console.log('Payload a enviar para actualización:', payload);
     
     if (Object.keys(payload).length === 0) {
       return res.status(400).json({ 
@@ -215,6 +258,7 @@ async function editPreregistro(req, res, next) {
       });
     }
 
+    // Llamar a la función de actualización con los datos preparados
     const updated = await updatePreregistroById(id, payload);
     res.json({ ok: true, data: updated });
   } catch (err) {

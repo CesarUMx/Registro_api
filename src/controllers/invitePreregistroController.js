@@ -78,7 +78,7 @@ async function handleInvitePreregistro(req, res, next) {
 
     // 3. Crear conductor (opcional)
     let driverId;
-    if (req.body.create_driver && req.body.driver_name) {
+    if (req.body.driver_name) { // Si se proporciona driver_name, crear conductor
       if (!req.files?.platePhoto) {
         await pool.query('ROLLBACK');
         return res.status(400).json({ 
@@ -108,10 +108,11 @@ async function handleInvitePreregistro(req, res, next) {
       admin_id: invite.admin_id,
       invite_id: invite.id,
       visitor_id: visitorId,
-      date: req.body.date || req.body.scheduled_date, // Compatibilidad con ambos nombres
-      time: req.body.time,
+      scheduled_date: req.body.scheduled_date || req.body.date, // Compatibilidad con ambos nombres
       reason: req.body.reason,
-      destination: req.body.destination
+      person_visited: req.body.person_visited, // Persona que se visita
+      // Si se proporcionó un conductor, automáticamente establecer parking_access a true
+      parking_access: driverId ? true : (req.body.parking_access === 'true' || req.body.parking_access === true)
     });
 
     // 5. Marcar invite como usado

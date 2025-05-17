@@ -49,7 +49,9 @@ app.use('/preregistro', invitePreregRouter);
 // Rutas protegidas
 app.use('/visitors', visitorRouter);
 app.use('/drivers', driverRouter);
-app.use('/', visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
+// Montar el enrutador de relaciones visitante-conductor directamente en la raíz
+// porque sus rutas ya incluyen los prefijos completos
+app.use(visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
 app.use('/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
 app.use('/registros', registrosRouter);

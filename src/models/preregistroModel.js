@@ -154,6 +154,10 @@ async function updatePreregistroById(id, data) {
     const sets = keys.map((k, i) => `${k} = $${i+1}`).join(',');
     const values = keys.map(k => data[k]);
 
+    console.log('Campos a actualizar:', keys);
+    console.log('Valores a actualizar:', values);
+    console.log('Consulta SQL:', `UPDATE preregistro SET ${sets}, updated_at = now() WHERE id = $${keys.length + 1} RETURNING *`);
+
     const { rows } = await pool.query(
       `UPDATE preregistro
          SET ${sets}, updated_at = now()
@@ -161,6 +165,8 @@ async function updatePreregistroById(id, data) {
        RETURNING *`,
       [...values, validId]
     );
+    
+    console.log('Resultado de la actualización:', rows[0]);
     
     if (rows.length === 0) {
       throw new PreregistroError(
@@ -240,10 +246,11 @@ async function deletePreregistroById(id) {
  * @param {Object} data - Datos del preregistro
  * @param {number} data.visitor_id - ID del visitante
  * @param {number} data.admin_id - ID del administrador
- * @param {string} data.date - Fecha del preregistro
- * @param {string} data.time - Hora del preregistro
+ * @param {string} data.scheduled_date - Fecha programada del preregistro
  * @param {string} data.reason - Motivo de la visita
- * @param {string} data.destination - Destino de la visita
+ * @param {string} data.person_visited - Persona que se visita
+ * @param {boolean} data.parking_access - Indica si necesita acceso al estacionamiento
+ * @param {string} data.invite_id - ID de la invitación (opcional)
  * @returns {Promise<number>} ID del preregistro creado
  * @throws {PreregistroError} Si ocurre un error
  */
@@ -283,16 +290,17 @@ async function createPreregistro(data) {
     // Crear el preregistro
     const { rows } = await pool.query(`
       INSERT INTO preregistro (
-        visitor_id, admin_id, date, time, reason, destination
-      ) VALUES ($1, $2, $3, $4, $5, $6)
+        visitor_id, admin_id, scheduled_date, reason, person_visited, parking_access, invite_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
     `, [
       data.visitor_id,
       data.admin_id,
-      data.date,
-      data.time,
+      data.scheduled_date,
       data.reason,
-      data.destination
+      data.person_visited || null,
+      data.parking_access !== undefined ? data.parking_access : false,
+      data.invite_id || null
     ]);
     
     return rows[0].id;

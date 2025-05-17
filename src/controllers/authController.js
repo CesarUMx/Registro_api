@@ -1,5 +1,6 @@
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const pool = require('../config/db');
 const { findByUsername, saveToken, revokeToken } = require('../models/userModel');
 
 async function login(req, res, next) {
@@ -8,7 +9,14 @@ async function login(req, res, next) {
     const { username, password } = req.body;
     
     console.log('Buscando usuario en la base de datos...');
-    const user = await findByUsername(username);
+    const { rows } = await pool.query(
+      `SELECT u.id, u.username, u.password_hash, r.name AS role, u.guard_type
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       WHERE u.username = $1`, 
+      [username]
+    );
+    const user = rows[0];
     
     if (!user) {
       console.log('Usuario no encontrado:', username);
@@ -24,8 +32,18 @@ async function login(req, res, next) {
     }
     
     console.log('Credenciales válidas, generando token JWT...');
+    
+    // Crear el payload del token
+    const tokenPayload = { userId: user.id, role: user.role };
+    
+    // Si el usuario es un guardia, incluir el tipo de guardia en el token
+    if (user.role === 'guardia' && user.guard_type) {
+      tokenPayload.guard_type = user.guard_type;
+      console.log('Incluyendo tipo de guardia en el token:', user.guard_type);
+    }
+    
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      tokenPayload,
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );

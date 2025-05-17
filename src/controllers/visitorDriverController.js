@@ -1,7 +1,7 @@
 const {
   associateDriverToVisitor,
   dissociateDriverFromVisitor,
-  getVisitorDrivers,
+  getVisitorDriverAssociations,
   setPrimaryDriver,
   VisitorDriverError
 } = require('../models/visitorDriverModel');
@@ -86,7 +86,7 @@ async function listDriversForVisitor(req, res, next) {
       });
     }
 
-    const drivers = await getVisitorDrivers(visitorId);
+    const drivers = await getVisitorDriverAssociations(visitorId);
     res.json({ ok: true, data: drivers });
   } catch (err) {
     if (err instanceof VisitorDriverError) {

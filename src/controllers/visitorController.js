@@ -204,11 +204,12 @@ async function removeVisitor(req, res, next) {
 
 /**
  * Busca visitantes por nombre
- * GET /visitors/search?q=query
+ * GET /visitors/search?q=query o GET /visitors/search?name=query
  */
 async function searchVisitorsByName(req, res, next) {
   try {
-    const query = req.query.q;
+    // Aceptar tanto 'q' como 'name' como parámetros de búsqueda
+    const query = req.query.q || req.query.name;
     if (!query) {
       return res.status(400).json({ 
         ok: false, 

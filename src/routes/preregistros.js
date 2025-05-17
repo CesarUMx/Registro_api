@@ -46,6 +46,7 @@ router.put(
   '/:id',
   verifyJWT,
   requireRole('admin','sysadmin'),
+  upload.none(), // Procesar form-data sin archivos
   editPreregistro
 );
 

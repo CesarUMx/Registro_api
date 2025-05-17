@@ -16,19 +16,61 @@ async function verifyJWT(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('Verificando token:', token.substring(0, 15) + '...');
+    console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Definido' : 'No definido');
+    
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('Token verificado correctamente. Payload:', payload);
+    } catch (jwtError) {
+      console.error('Error al verificar JWT:', jwtError.message);
+      return res.status(401).json({ ok: false, error: 'Token inválido o expirado', details: jwtError.message });
+    }
 
-     // Verificar en BD que no esté revocado
-     const { rows } = await pool.query(
+    // Verificar en BD que no esté revocado
+    console.log('Verificando si el token está revocado en la BD...');
+    const { rows } = await pool.query(
       `SELECT revoked FROM tokens WHERE token = $1`,
       [token]
     );
+    console.log('Resultado de la consulta de tokens:', { rowCount: rows.length, revoked: rows[0]?.revoked });
 
     if (rows.length === 0 || rows[0].revoked) {
+      console.log('Token no encontrado en BD o revocado');
       return res.status(401).json({ ok: false, error: 'Token inválido o revocado' });
     }
-
-    req.user = { userId: payload.userId, role: payload.role };
+    
+    console.log('Token válido y no revocado');
+    
+    // Inicializar el objeto de usuario con los datos del payload
+    req.user = { 
+      userId: payload.userId, 
+      role: payload.role 
+    };
+    
+    // Si el tipo de guardia viene en el token, usarlo directamente
+    if (payload.guard_type) {
+      req.user.guard_type = payload.guard_type;
+      console.log('Tipo de guardia obtenido del token:', payload.guard_type);
+    }
+    // Si no viene en el token pero es un guardia, intentar obtenerlo de la BD
+    else if (payload.role === 'guardia') {
+      console.log('Tipo de guardia no encontrado en el token, buscando en BD...');
+      const { getGuardType } = require('../models/userModel');
+      const guardType = await getGuardType(payload.userId);
+      
+      if (guardType) {
+        req.user.guard_type = guardType;
+        console.log('Tipo de guardia obtenido de la BD:', guardType);
+      } else {
+        console.log('No se encontró tipo de guardia en la BD');
+      }
+    }
+    
+    // Para depuración
+    console.log('Usuario autenticado:', req.user);
+    
     next();
   } catch (err) {
     return res.status(401).json({ ok: false, error: 'Token inválido o expirado' });
