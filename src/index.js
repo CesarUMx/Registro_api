@@ -2,6 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const fileUpload = require('express-fileupload');
 const app     = express();
 const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
@@ -27,12 +28,20 @@ app.use(cors({
 app.use(passport.initialize());
 app.use(express.json());
 
+// Middleware para manejo de carga de archivos
+app.use(fileUpload({
+  createParentPath: true,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size
+  abortOnLimit: true,
+  responseOnLimit: 'El archivo es demasiado grande'
+}));
+
 // Servir archivos estáticos desde la carpeta uploads
 app.use('/uploads', express.static('uploads'));
 
 // Ruta raíz
 app.get('/', (req, res) => {
-  res.json({ ok: true, message: 'API corriendo correctamente' });
+  res.json({ ok: true, message: 'API corriendo correctamente cesar' });
 });
 
 // Rutas de autenticación (sin prefijo /api para mantener compatibilidad con Google OAuth)
@@ -47,14 +56,15 @@ app.get('/login-failure', (req, res) => {
 app.use('/preregistro', invitePreregRouter);
 
 // Rutas protegidas
-app.use('/visitors', visitorRouter);
-app.use('/drivers', driverRouter);
+// Quitamos el prefijo /api para mantener compatibilidad con el frontend
+app.use('/api/visitors', visitorRouter);
+app.use('/api/drivers', driverRouter);
 // Montar el enrutador de relaciones visitante-conductor directamente en la raíz
 // porque sus rutas ya incluyen los prefijos completos
 app.use(visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
-app.use('/invites', invitesRouter);  
+app.use('/api/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
-app.use('/registros', registrosRouter);
+app.use('/api/registros', registrosRouter);
 app.use('/users', userManagementRouter);
 
 // Para cualquier ruta no definida:

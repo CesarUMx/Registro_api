@@ -9,13 +9,56 @@ const pool = require('../config/db');
 router.post('/login', login);
 router.post('/logout', verifyJWT, logout);
 
+// Ruta para verificar si el token es válido
+router.get('/verify', verifyJWT, async (req, res) => {
+  try {
+    // Si llegamos aquí, el token es válido (el middleware verifyJWT ya lo verificó)
+    
+    // Obtener información adicional del usuario desde la base de datos
+    const { rows } = await pool.query(
+      `SELECT u.guard_type
+       FROM users u
+       WHERE u.id = $1`, 
+      [req.user.userId]
+    );
+    
+    const userData = rows[0] || {};
+    
+    console.log('Verificación de token para usuario:', {
+      userId: req.user.userId,
+      role: req.user.role,
+      guard_type: userData.guard_type || req.user.guard_type
+    });
+    
+    res.status(200).json({ 
+      ok: true, 
+      user: { 
+        id: req.user.userId, 
+        role: req.user.role,
+        guard_type: userData.guard_type || req.user.guard_type
+      } 
+    });
+  } catch (error) {
+    console.error('Error al verificar token:', error);
+    res.status(500).json({ ok: false, error: 'Error al verificar token' });
+  }
+});
+
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 router.get('/google/callback', passport.authenticate('google', { session: false, failureRedirect: '/login-failure' }), 
 async (req, res, next) => {
   try {
     // 1) Generar el JWT
+    const tokenPayload = { userId: req.user.id, role: req.user.role };
+    
+    // Si el usuario tiene un tipo de guardia, incluirlo en el token
+    if (req.user.guard_type) {
+      tokenPayload.guard_type = req.user.guard_type;
+      console.log('Incluyendo tipo de guardia en el token OAuth:', req.user.guard_type);
+    }
+    
     const token = jwt.sign(
-      { userId: req.user.id, role: req.user.role },
+      tokenPayload,
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );

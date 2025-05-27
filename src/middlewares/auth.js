@@ -93,4 +93,37 @@ function requireRole(...allowedRoles) {
   };
 }
 
-module.exports = { verifyJWT, requireRole };
+/**
+ * Genera un middleware que comprueba que `req.user.guard_type` esté en la lista de tipos de guardia permitidos.
+ * Solo aplica si el rol es 'guardia', de lo contrario pasa al siguiente middleware.
+ * Ejemplo: requireGuardType('entrada', 'supervisor')
+ */
+function requireGuardType(...allowedTypes) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(500).json({ ok: false, error: 'verifyJWT debe ir antes de requireGuardType' });
+    }
+    
+    // Si no es guardia, no aplicamos esta restricción
+    if (req.user.role !== 'guardia') {
+      return next();
+    }
+    
+    // Si es guardia pero no tiene tipo, error
+    if (!req.user.guard_type) {
+      return res.status(403).json({ ok: false, error: 'Tipo de guardia no definido' });
+    }
+    
+    // Verificar si el tipo de guardia está permitido
+    if (!allowedTypes.includes(req.user.guard_type)) {
+      return res.status(403).json({ 
+        ok: false, 
+        error: `Acceso denegado. Solo guardias de tipo: ${allowedTypes.join(', ')} pueden realizar esta acción` 
+      });
+    }
+    
+    next();
+  };
+}
+
+module.exports = { verifyJWT, requireRole, requireGuardType };

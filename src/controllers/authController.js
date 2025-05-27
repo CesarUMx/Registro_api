@@ -36,11 +36,21 @@ async function login(req, res, next) {
     // Crear el payload del token
     const tokenPayload = { userId: user.id, role: user.role };
     
-    // Si el usuario es un guardia, incluir el tipo de guardia en el token
-    if (user.role === 'guardia' && user.guard_type) {
+    // Incluir el tipo de guardia en el token si existe
+    if (user.guard_type) {
       tokenPayload.guard_type = user.guard_type;
       console.log('Incluyendo tipo de guardia en el token:', user.guard_type);
+    } else {
+      console.log('Usuario sin tipo de guardia especificado');
     }
+    
+    // Log completo para depuración
+    console.log('Datos completos del usuario:', {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      guard_type: user.guard_type
+    });
     
     const token = jwt.sign(
       tokenPayload,

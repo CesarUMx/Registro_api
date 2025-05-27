@@ -1,7 +1,8 @@
 const router = require('express').Router();
 const {
   verifyJWT,
-  requireRole
+  requireRole,
+  requireGuardType
 } = require('../middlewares/auth');
 const {
   listVisitors,
@@ -38,7 +39,8 @@ router.get(
 router.post(
   '/',
   verifyJWT,
-  requireRole('sysadmin', 'admin', 'guard'),
+  requireRole('sysadmin', 'admin', 'guardia'),
+  requireGuardType('entrada', 'supervisor'),
   upload.fields([
     { name: 'idPhoto', maxCount: 1 }
   ]),

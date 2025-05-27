@@ -306,10 +306,11 @@ async function registerBuildingExit(id, { guard_id }) {
  * @param {number} id - ID del registro
  * @param {Object} data - Datos adicionales
  * @param {number} data.guard_id - ID del guardia que registra la salida
+ * @param {string} data.notes - Notas adicionales (opcional)
  * @returns {Promise<Object>} El registro actualizado
  * @throws {RegistroError} Si ocurre un error
  */
-async function registerGateExit(id, { guard_id }) {
+async function registerGateExit(id, { guard_id, notes }) {
   try {
     const validId = validateId(id);
     
@@ -346,10 +347,11 @@ async function registerGateExit(id, { guard_id }) {
        SET gate_exit_time = NOW(),
            exited_at = NOW(),
            status = 'completed',
+           notes = $2,
            updated_at = NOW()
        WHERE id = $1
        RETURNING *`,
-      [validId]
+      [validId, notes || null]
     );
     
     if (rows.length === 0) {
@@ -424,16 +426,19 @@ async function findByPreregistroCode(code) {
 }
 
 /**
- * Obtiene todos los registros con información detallada del visitante
+ * Obtiene todos los registros con información detallada del visitante y conductor
  * @returns {Promise<Array>} Lista de registros
  * @throws {RegistroError} Si ocurre un error
  */
 async function getAllRegistros() {
   try {
     const { rows } = await pool.query(`
-      SELECT r.*, v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path
+      SELECT r.*, 
+             v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path,
+             d.driver_name, d.driver_id_photo_path, d.plate_photo_path
       FROM registro r
-      JOIN visitors v ON r.visitor_id = v.id
+      LEFT JOIN visitors v ON r.visitor_id = v.id
+      LEFT JOIN drivers d ON r.driver_id = d.id
       ORDER BY r.entered_at DESC
     `);
     return rows;

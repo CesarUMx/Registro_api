@@ -34,7 +34,7 @@ async function createGateRegistroByGuard(req, res, next) {
     // Verificar que el guardia sea de tipo caseta
     console.log('Tipo de guardia del usuario:', req.user.guard_type);
     
-    if (req.user.guard_type !== 'caseta') {
+    if (req.user.guard_type !== 'caseta' && req.user.guard_type !== 'supervisor') {
       await pool.query('ROLLBACK');
       return res.status(403).json({ 
         ok: false, 
@@ -214,7 +214,7 @@ async function updateWithBuildingEntryByGuard(req, res, next) {
     await pool.query('BEGIN');
     
     // Verificar que el guardia sea de tipo entrada
-    if (req.user.guard_type !== 'entrada') {
+    if (req.user.guard_type !== 'entrada' && req.user.guard_type !== 'supervisor') {
       await pool.query('ROLLBACK');
       return res.status(403).json({ 
         ok: false, 
@@ -352,7 +352,7 @@ async function updateWithBuildingEntryByGuard(req, res, next) {
 async function registerBuildingExitByGuard(req, res, next) {
   try {
     // Verificar que el guardia sea de tipo entrada
-    if (req.user.guard_type !== 'entrada') {
+    if (req.user.guard_type !== 'entrada' && req.user.guard_type !== 'supervisor') {
       return res.status(403).json({ 
         ok: false, 
         error: 'Solo los guardias de entrada al edificio pueden registrar salidas en este punto',
@@ -393,7 +393,7 @@ async function registerBuildingExitByGuard(req, res, next) {
 async function registerGateExitByGuard(req, res, next) {
   try {
     // Verificar que el guardia sea de tipo caseta
-    if (req.user.guard_type !== 'caseta') {
+    if (req.user.guard_type !== 'caseta' && req.user.guard_type !== 'supervisor') {
       return res.status(403).json({ 
         ok: false, 
         error: 'Solo los guardias de caseta pueden registrar salidas en este punto',
@@ -402,10 +402,14 @@ async function registerGateExitByGuard(req, res, next) {
     }
     
     const registroId = req.params.id;
+    const { notes } = req.body; // Obtener las notas del cuerpo de la solicitud
+    
+    console.log('Registrando salida de caseta con notas:', notes);
     
     // Registrar la salida de la caseta
     const updatedRegistro = await registerGateExit(registroId, {
       guard_id: req.user.userId,
+      notes: notes // Pasar las notas al modelo
     });
 
     res.status(200).json({ 
@@ -609,7 +613,7 @@ async function createBuildingRegistroByGuard(req, res, next) {
     await pool.query('BEGIN');
     
     // Verificar que el guardia sea de tipo entrada
-    if (req.user.guard_type !== 'entrada') {
+    if (req.user.guard_type !== 'entrada' && req.user.guard_type !== 'supervisor') {
       await pool.query('ROLLBACK');
       return res.status(403).json({ 
         ok: false, 
@@ -755,7 +759,7 @@ async function createBuildingRegistroByGuard(req, res, next) {
 async function completeRegistroAtGate(req, res, next) {
   try {
     // Verificar que el guardia sea de tipo caseta
-    if (req.user.guard_type !== 'caseta') {
+    if (req.user.guard_type !== 'caseta' && req.user.guard_type !== 'supervisor') {
       return res.status(403).json({ 
         ok: false, 
         error: 'Solo los guardias de caseta pueden completar registros en este punto',
