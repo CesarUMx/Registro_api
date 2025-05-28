@@ -63,6 +63,10 @@ async function showVisitor(req, res, next) {
  */
 async function createNewVisitor(req, res, next) {
   try {
+    console.log('=== SOLICITUD RECIBIDA PARA CREAR VISITANTE ===');
+    console.log('Body:', req.body);
+    console.log('Files:', req.files);
+    
     // 1) Extrae los datos de texto
     const { visitor_name, phone, email, company, type } = req.body;
 
@@ -76,7 +80,10 @@ async function createNewVisitor(req, res, next) {
 
     // 2) Extrae los nombres de archivo
     const idPhotoFile = req.files?.idPhoto?.[0]?.filename;
-    if (!idPhotoFile) {
+    
+    // La foto de identificación es opcional para visitantes sin vehículo
+    // pero obligatoria para otros tipos de visitantes
+    if (!idPhotoFile && type !== 'sin_vehiculo') {
       return res.status(400).json({ 
         ok: false, 
         error: 'La foto de identificación es obligatoria',
@@ -85,14 +92,20 @@ async function createNewVisitor(req, res, next) {
     }
 
     // 3) Llama al modelo pasándole rutas de imágenes
-    const visitorId = await createVisitor({
+    const visitorData = {
       visitor_name,
-      visitor_id_photo_path: `uploads/${idPhotoFile}`,
       phone,
       email,
       company,
       type
-    });
+    };
+    
+    // Agregar la ruta de la foto solo si existe
+    if (idPhotoFile) {
+      visitorData.visitor_id_photo_path = `uploads/${idPhotoFile}`;
+    }
+    
+    const visitorId = await createVisitor(visitorData);
 
     // 4) Obtiene el visitante completo para devolverlo en la respuesta
     const newVisitor = await getVisitorById(visitorId);

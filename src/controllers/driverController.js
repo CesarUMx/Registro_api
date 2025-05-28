@@ -64,6 +64,10 @@ async function showDriver(req, res, next) {
  */
 async function createNewDriver(req, res, next) {
   try {
+    console.log('=== SOLICITUD RECIBIDA PARA CREAR CONDUCTOR ===');
+    console.log('Body:', req.body);
+    console.log('Files:', req.files);
+    
     // 1) Extrae los datos de texto
     const { driver_name } = req.body;
 
@@ -79,11 +83,20 @@ async function createNewDriver(req, res, next) {
     const idPhotoFile = req.files?.idPhoto?.[0]?.filename;
     const platePhotoFile = req.files?.platePhoto?.[0]?.filename;
     
-    if (!idPhotoFile || !platePhotoFile) {
+    // Verificar cada archivo por separado para dar mensajes de error más precisos
+    if (!idPhotoFile) {
       return res.status(400).json({ 
         ok: false, 
-        error: 'Las fotos de identificación y placa son obligatorias',
-        code: 'MISSING_REQUIRED_FILES'
+        error: 'La foto de identificación es obligatoria',
+        code: 'MISSING_ID_PHOTO'
+      });
+    }
+    
+    if (!platePhotoFile) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'La foto de la placa es obligatoria',
+        code: 'MISSING_PLATE_PHOTO'
       });
     }
 

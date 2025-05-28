@@ -14,6 +14,7 @@ const {
   getDriversForVisitor
 } = require('../controllers/driverController');
 const upload = require('../middlewares/upload');
+const uploadErrorHandler = require('../middlewares/uploadErrorHandler');
 
 // Listar todos los conductores
 router.get(
@@ -46,6 +47,7 @@ router.post(
     { name: 'idPhoto', maxCount: 1 },
     { name: 'platePhoto', maxCount: 1 }
   ]),
+  uploadErrorHandler, // Middleware para manejar errores de carga de archivos
   createNewDriver
 );
 

@@ -2,7 +2,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fileUpload = require('express-fileupload');
+// Eliminamos la importación de express-fileupload para usar solo multer
 const app     = express();
 const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
@@ -28,13 +28,8 @@ app.use(cors({
 app.use(passport.initialize());
 app.use(express.json());
 
-// Middleware para manejo de carga de archivos
-app.use(fileUpload({
-  createParentPath: true,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size
-  abortOnLimit: true,
-  responseOnLimit: 'El archivo es demasiado grande'
-}));
+// NOTA: Eliminamos express-fileupload para evitar conflictos con multer
+// que se usa en las rutas específicas para la carga de archivos
 
 // Servir archivos estáticos desde la carpeta uploads
 app.use('/uploads', express.static('uploads'));
@@ -75,7 +70,7 @@ app.use((req, res) => {
 // Manejar errores
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
 });

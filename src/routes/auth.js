@@ -13,34 +13,63 @@ router.post('/logout', verifyJWT, logout);
 router.get('/verify', verifyJWT, async (req, res) => {
   try {
     // Si llegamos aquí, el token es válido (el middleware verifyJWT ya lo verificó)
+    console.log('Iniciando verificación de token para usuario ID:', req.user.userId);
     
-    // Obtener información adicional del usuario desde la base de datos
-    const { rows } = await pool.query(
-      `SELECT u.guard_type
-       FROM users u
-       WHERE u.id = $1`, 
-      [req.user.userId]
-    );
+    // Validar que el ID de usuario existe
+    if (!req.user || !req.user.userId) {
+      console.error('Token válido pero sin ID de usuario');
+      return res.status(401).json({ ok: false, error: 'Token inválido o usuario no encontrado' });
+    }
     
-    const userData = rows[0] || {};
-    
-    console.log('Verificación de token para usuario:', {
-      userId: req.user.userId,
-      role: req.user.role,
-      guard_type: userData.guard_type || req.user.guard_type
-    });
-    
-    res.status(200).json({ 
-      ok: true, 
-      user: { 
-        id: req.user.userId, 
+    try {
+      // Obtener información adicional del usuario desde la base de datos con tiempo límite
+      const queryPromise = pool.query(
+        `SELECT u.guard_type
+         FROM users u
+         WHERE u.id = $1`, 
+        [req.user.userId]
+      );
+      
+      // Establecer un tiempo límite para la consulta a la base de datos
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Tiempo de espera de la consulta excedido')), 3000);
+      });
+      
+      // Usar Promise.race para establecer un tiempo límite
+      const { rows } = await Promise.race([queryPromise, timeoutPromise]);
+      
+      const userData = rows[0] || {};
+      
+      console.log('Verificación de token exitosa para usuario:', {
+        userId: req.user.userId,
         role: req.user.role,
         guard_type: userData.guard_type || req.user.guard_type
-      } 
-    });
+      });
+      
+      return res.status(200).json({ 
+        ok: true, 
+        user: { 
+          id: req.user.userId, 
+          role: req.user.role,
+          guard_type: userData.guard_type || req.user.guard_type
+        } 
+      });
+    } catch (dbError) {
+      console.error('Error en la consulta a la base de datos:', dbError);
+      // Si hay un error en la consulta a la base de datos, devolver los datos básicos del usuario
+      return res.status(200).json({ 
+        ok: true, 
+        user: { 
+          id: req.user.userId, 
+          role: req.user.role,
+          guard_type: req.user.guard_type || null
+        },
+        warning: 'Datos parciales debido a un error en la base de datos'
+      });
+    }
   } catch (error) {
-    console.error('Error al verificar token:', error);
-    res.status(500).json({ ok: false, error: 'Error al verificar token' });
+    console.error('Error general al verificar token:', error);
+    return res.status(500).json({ ok: false, error: 'Error al verificar token' });
   }
 });
 

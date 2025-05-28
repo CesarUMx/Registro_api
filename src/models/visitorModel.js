@@ -114,13 +114,37 @@ async function createVisitor({ visitor_name, visitor_id_photo_path, phone, email
       );
     }
     
-    const { rows } = await pool.query(`
-      INSERT INTO visitors
-        (visitor_name, visitor_id_photo_path, phone, email, company, type)
-      VALUES
-        ($1, $2, $3, $4, $5, $6)
-      RETURNING id
-    `, [visitor_name, visitor_id_photo_path, phone, email, company, type]);
+    // Construir la consulta SQL dinámicamente según los campos disponibles
+    let query;
+    let params;
+    
+    // Si no hay foto de identificación (caso de visitante sin vehículo)
+    if (!visitor_id_photo_path && type === 'sin_vehiculo') {
+      console.log('Caso: Visitante sin vehículo sin foto de identificación');
+      query = `
+        INSERT INTO visitors
+          (visitor_name, phone, email, company, type)
+        VALUES
+          ($1, $2, $3, $4, $5)
+        RETURNING id
+      `;
+      params = [visitor_name, phone, email, company, type];
+    } else {
+      console.log('Caso: Visitante normal con foto de identificación');
+      query = `
+        INSERT INTO visitors
+          (visitor_name, visitor_id_photo_path, phone, email, company, type)
+        VALUES
+          ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `;
+      params = [visitor_name, visitor_id_photo_path, phone, email, company, type];
+    }
+    
+    console.log('Consulta SQL:', query);
+    console.log('Parámetros:', params);
+    
+    const { rows } = await pool.query(query, params);
     
     return rows[0].id;
   } catch (error) {

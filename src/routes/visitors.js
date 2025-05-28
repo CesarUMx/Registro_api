@@ -13,6 +13,7 @@ const {
   searchVisitorsByName
 } = require('../controllers/visitorController');
 const upload = require('../middlewares/upload');
+const uploadErrorHandler = require('../middlewares/uploadErrorHandler');
 
 // Listar todos los visitantes
 router.get(
@@ -44,6 +45,7 @@ router.post(
   upload.fields([
     { name: 'idPhoto', maxCount: 1 }
   ]),
+  uploadErrorHandler, // Middleware para manejar errores de carga de archivos
   createNewVisitor
 );
 
