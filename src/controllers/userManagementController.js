@@ -190,10 +190,26 @@ async function deleteUser(req, res, next) {
   }
 }
 
+// Obtener usuarios con rol admin y sysadmin
+async function getAdminUsers(req, res, next) {
+  try {
+    console.log('Obteniendo usuarios admin y sysadmin');
+    
+    const users = await userModel.getAdminUsers();
+    
+    console.log(`Se encontraron ${users.length} usuarios admin/sysadmin`);
+    res.json({ ok: true, data: users });
+  } catch (err) {
+    console.error('Error al obtener usuarios admin/sysadmin:', err);
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  getAdminUsers
 };

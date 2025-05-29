@@ -60,7 +60,7 @@ app.use(visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
 app.use('/api/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
 app.use('/api/registros', registrosRouter);
-app.use('/users', userManagementRouter);
+app.use('/api/users', userManagementRouter);
 
 // Para cualquier ruta no definida:
 app.use((req, res) => {

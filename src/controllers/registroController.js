@@ -246,7 +246,7 @@ async function updateWithBuildingEntryByGuard(req, res, next) {
       });
     }
     
-    let visitorId = registro.visitor_id;
+    let visitorId = req.body.visitor_id;
     
     // Si no hay un visitante registrado, crear uno nuevo
     if (!visitorId) {
@@ -313,10 +313,14 @@ async function updateWithBuildingEntryByGuard(req, res, next) {
       }
     }
     
+    // Obtener el ID de la persona a visitar (admin o sysadmin)
+    const person_visited_id = req.body.person_visited_id || null;
+    
     // Actualizar el registro con la entrada al edificio
     const updatedRegistro = await updateWithBuildingEntry(registroId, {
       entry_guard_id: req.user.userId,
       visitor_id: visitorId,
+      person_visited_id: person_visited_id,
       reason: reason
     });
 
@@ -365,6 +369,7 @@ async function registerBuildingExitByGuard(req, res, next) {
     // Registrar la salida del edificio
     const updatedRegistro = await registerBuildingExit(registroId, {
       guard_id: req.user.userId,
+      notes: req.body.notes // Pasar las notas del formulario al modelo
     });
 
     res.status(200).json({ 

@@ -6,7 +6,8 @@ const {
   getUserById, 
   createUser, 
   updateUser, 
-  deleteUser 
+  deleteUser,
+  getAdminUsers
 } = require('../controllers/userManagementController');
 const { verifyJWT, requireRole } = require('../middlewares/auth');
 
@@ -17,6 +18,7 @@ router.get(
   requireRole('admin', 'sysadmin'), 
   getAllUsers
 );
+router.get('/admins', verifyJWT, getAdminUsers);
 router.get('/:id', verifyJWT, requireRole('admin', 'sysadmin'), getUserById);
 router.post('/', verifyJWT, requireRole('sysadmin'), createUser);
 router.put('/:id', verifyJWT, requireRole('sysadmin'), updateUser);

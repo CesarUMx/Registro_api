@@ -114,12 +114,13 @@ async function createGateRegistro({ preregistro_id, admin_id, gate_guard_id, vis
  * @param {Object} data - Datos para actualizar
  * @param {number} data.entry_guard_id - ID del guardia de entrada
  * @param {number} data.visitor_id - ID del visitante (requerido si no se proporcionó en la caseta)
+ * @param {number} data.person_visited_id - ID de la persona a visitar (admin o sysadmin)
  * @param {string} data.reason - Motivo de la visita
  * @param {string} data.notes - Notas adicionales (opcional)
  * @returns {Promise<Object>} El registro actualizado
  * @throws {RegistroError} Si ocurre un error
  */
-async function updateWithBuildingEntry(id, { entry_guard_id, visitor_id, reason, notes }) {
+async function updateWithBuildingEntry(id, { entry_guard_id, visitor_id, person_visited_id, reason, notes }) {
   try {
     const validId = validateId(id);
     
@@ -168,18 +169,18 @@ async function updateWithBuildingEntry(id, { entry_guard_id, visitor_id, reason,
     }
     
     // Actualizar el registro con los datos de entrada al edificio
-    // Nota: person_visited no se guarda en la tabla registro, solo se usa en el controlador
     const { rows } = await pool.query(
       `UPDATE registro
        SET entry_guard_id = $1,
            visitor_id = COALESCE($2, visitor_id),
-           reason = COALESCE($3, reason),
-           notes = $4,
+           person_visited_id = $3,
+           reason = COALESCE($4, reason),
+           notes = $5,
            building_entry_time = NOW(),
            updated_at = NOW()
-       WHERE id = $5
+       WHERE id = $6
        RETURNING *`,
-      [entry_guard_id, visitor_id, reason, notes, validId]
+      [entry_guard_id, visitor_id, person_visited_id, reason, notes, validId]
     );
     
     if (rows.length === 0) {
@@ -220,10 +221,11 @@ async function updateWithBuildingEntry(id, { entry_guard_id, visitor_id, reason,
  * @param {number} id - ID del registro
  * @param {Object} data - Datos adicionales
  * @param {number} data.guard_id - ID del guardia que registra la salida
+ * @param {string} data.notes - Notas adicionales (opcional)
  * @returns {Promise<Object>} El registro actualizado
  * @throws {RegistroError} Si ocurre un error
  */
-async function registerBuildingExit(id, { guard_id }) {
+async function registerBuildingExit(id, { guard_id, notes }) {
   try {
     const validId = validateId(id);
     
@@ -266,15 +268,36 @@ async function registerBuildingExit(id, { guard_id }) {
       completeRegistro = "completed";
     }
 
-    // Actualizar el registro con la hora de salida del edificio
+    // Preparar las notas con prefijo si existen
+    let notesWithPrefix = '';
+    if (notes && notes.trim()) {
+      notesWithPrefix = `Nota de edificio: ${notes.trim()}`;
+    }
+    
+    // Obtener las notas actuales del registro
+    const currentNotesResult = await pool.query(
+      'SELECT notes FROM registro WHERE id = $1',
+      [validId]
+    );
+    
+    let updatedNotes = notesWithPrefix;
+    
+    // Si ya hay notas existentes, concatenarlas
+    if (currentNotesResult.rows.length > 0 && currentNotesResult.rows[0].notes) {
+      const currentNotes = currentNotesResult.rows[0].notes;
+      updatedNotes = notesWithPrefix ? `${currentNotes}\n${notesWithPrefix}` : currentNotes;
+    }
+    
+    // Actualizar el registro con la hora de salida del edificio y las notas
     const { rows } = await pool.query(
       `UPDATE registro
        SET building_exit_time = NOW(),
            updated_at = NOW(),
-           status = $2
+           status = $2,
+           notes = $3
        WHERE id = $1
        RETURNING *`,
-      [validId, completeRegistro]
+      [validId, completeRegistro, updatedNotes]
     );
     
     if (rows.length === 0) {
@@ -341,6 +364,26 @@ async function registerGateExit(id, { guard_id, notes }) {
       );
     }
     
+    // Preparar las notas con prefijo si existen
+    let notesWithPrefix = '';
+    if (notes && notes.trim()) {
+      notesWithPrefix = `Nota de caseta: ${notes.trim()}`;
+    }
+    
+    // Obtener las notas actuales del registro
+    const currentNotesResult = await pool.query(
+      'SELECT notes FROM registro WHERE id = $1',
+      [validId]
+    );
+    
+    let updatedNotes = notesWithPrefix;
+    
+    // Si ya hay notas existentes, concatenarlas
+    if (currentNotesResult.rows.length > 0 && currentNotesResult.rows[0].notes) {
+      const currentNotes = currentNotesResult.rows[0].notes;
+      updatedNotes = notesWithPrefix ? `${currentNotes}\n${notesWithPrefix}` : currentNotes;
+    }
+    
     // Actualizar el registro con la hora de salida por la caseta y completar
     const { rows } = await pool.query(
       `UPDATE registro
@@ -351,7 +394,7 @@ async function registerGateExit(id, { guard_id, notes }) {
            updated_at = NOW()
        WHERE id = $1
        RETURNING *`,
-      [validId, notes || null]
+      [validId, updatedNotes]
     );
     
     if (rows.length === 0) {
@@ -463,25 +506,49 @@ async function getRegistroById(id) {
     const validId = validateId(id);
     console.log('Valid ID:', validId);
     
+    // Obtener datos básicos del registro
     const { rows } = await pool.query(`
       SELECT r.*
       FROM registro r
       WHERE r.id = $1
     `, [validId]);
 
-    console.log('Rows:', rows);
-    if (rows[0].visitor_id !== null) {
-      console.log('visitor_id found, fetching visitor details');
-      const { rows } = await pool.query(`
-        SELECT r.*, v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path
-        FROM registro r
-        JOIN visitors v ON r.visitor_id = v.id
-        WHERE r.id = $1
-      `, [validId]);
-      return rows[0];
+    if (rows.length === 0) {
+      return null;
     }
     
-    return rows[0];
+    let registro = rows[0];
+    
+    // Si hay un visitante, obtener sus detalles
+    if (registro.visitor_id !== null) {
+      console.log('visitor_id found, fetching visitor details');
+      const visitorResult = await pool.query(`
+        SELECT v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path
+        FROM visitors v
+        WHERE v.id = $1
+      `, [registro.visitor_id]);
+      
+      if (visitorResult.rows.length > 0) {
+        registro = { ...registro, ...visitorResult.rows[0] };
+      }
+    }
+    
+    // Si hay una persona visitada, obtener sus detalles
+    if (registro.person_visited_id !== null) {
+      console.log('person_visited_id found, fetching user details');
+      const userResult = await pool.query(`
+        SELECT u.name as person_visited_name, r.name as person_visited_role
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE u.id = $1
+      `, [registro.person_visited_id]);
+      
+      if (userResult.rows.length > 0) {
+        registro = { ...registro, ...userResult.rows[0] };
+      }
+    }
+    
+    return registro;
   } catch (error) {
     // Si ya es un error personalizado, propagarlo
     if (error instanceof RegistroError) {
