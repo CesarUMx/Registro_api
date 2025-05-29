@@ -24,16 +24,9 @@ const { associateDriverToVisitor, VisitorDriverError } = require('../models/visi
  */
 async function createGateRegistroByGuard(req, res, next) {
   try {
-    // Depuración: mostrar todos los datos recibidos
-    console.log('Datos recibidos en createGateRegistroByGuard:');
-    console.log('Body:', req.body);
-    console.log('Files:', req.files ? Object.keys(req.files) : 'No hay archivos');
-    console.log('Usuario autenticado:', req.user);
     await pool.query('BEGIN');
     
     // Verificar que el guardia sea de tipo caseta
-    console.log('Tipo de guardia del usuario:', req.user.guard_type);
-    
     if (req.user.guard_type !== 'caseta' && req.user.guard_type !== 'supervisor') {
       await pool.query('ROLLBACK');
       return res.status(403).json({ 
@@ -103,7 +96,6 @@ async function createGateRegistroByGuard(req, res, next) {
       driverId = req.body.driver_id;
     } else if (req.body.driver_name) {
       // Verificar que se hayan enviado las fotos necesarias
-      console.log('Files:', req.files);
       if (!req.files?.platePhoto) {
         await pool.query('ROLLBACK');
         return res.status(400).json({ 
@@ -138,22 +130,19 @@ async function createGateRegistroByGuard(req, res, next) {
     // Aceptar tanto preregistro_id como preregistro_code
     if (req.body.preregistro_id) {
       preregistroId = parseInt(req.body.preregistro_id, 10);
-      console.log('Usando preregistro_id:', preregistroId);
     } else if (req.body.preregistro_code) {
       // Usar preregistro_code como alias de preregistro_id
       preregistroId = parseInt(req.body.preregistro_code, 10);
-      console.log('Usando preregistro_code como preregistro_id:', preregistroId);
     }
     
     // Verificar que sea un número válido
     if (preregistroId !== null && isNaN(preregistroId)) {
       preregistroId = null;
-      console.log('El ID del preregistro no es un número válido');
+      console.error('El ID del preregistro no es un número válido');
     }
     
     // Si hay un ID de preregistro, verificar que exista y obtener el admin_id
     if (preregistroId) {
-      console.log('Verificando preregistro en la base de datos...');
       const preregistroResult = await pool.query(
         'SELECT id, admin_id FROM preregistro WHERE id = $1',
         [preregistroId]
@@ -162,10 +151,8 @@ async function createGateRegistroByGuard(req, res, next) {
       if (preregistroResult.rows.length > 0) {
         // El preregistro existe, obtener el admin_id
         adminId = preregistroResult.rows[0].admin_id;
-        console.log('Preregistro encontrado, admin_id:', adminId);
       } else {
         // El preregistro no existe
-        console.log('No se encontró un preregistro con ID:', preregistroId);
         preregistroId = null; // Resetear el ID ya que no existe
       }
     }
@@ -285,8 +272,6 @@ async function updateWithBuildingEntryByGuard(req, res, next) {
     let reason = req.body.reason;
     
     if (registro.preregistro_id) {
-      console.log('El registro tiene un preregistro asociado, obteniendo datos del preregistro...');
-      
       // Obtener datos del preregistro
       const preregistroResult = await pool.query(
         'SELECT reason FROM preregistro WHERE id = $1',
@@ -298,8 +283,6 @@ async function updateWithBuildingEntryByGuard(req, res, next) {
         
         // Usar los datos del preregistro si no se proporcionaron en la solicitud
         reason = reason || preregistro.reason;
-        
-        console.log('Datos obtenidos del preregistro:', { reason });
       }
     } else {
       // Si no hay preregistro, verificar que se haya proporcionado el motivo
@@ -408,8 +391,6 @@ async function registerGateExitByGuard(req, res, next) {
     
     const registroId = req.params.id;
     const { notes } = req.body; // Obtener las notas del cuerpo de la solicitud
-    
-    console.log('Registrando salida de caseta con notas:', notes);
     
     // Registrar la salida de la caseta
     const updatedRegistro = await registerGateExit(registroId, {

@@ -64,10 +64,6 @@ async function showDriver(req, res, next) {
  */
 async function createNewDriver(req, res, next) {
   try {
-    console.log('=== SOLICITUD RECIBIDA PARA CREAR CONDUCTOR ===');
-    console.log('Body:', req.body);
-    console.log('Files:', req.files);
-    
     // 1) Extrae los datos de texto
     const { driver_name } = req.body;
 

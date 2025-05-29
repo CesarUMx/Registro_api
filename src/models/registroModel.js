@@ -43,13 +43,6 @@ function validateId(id) {
  */
 async function createGateRegistro({ preregistro_id, admin_id, gate_guard_id, visitor_id, reason, driver_id }) {
   try {
-    // Depuración: mostrar los parámetros recibidos
-    console.log('Parámetros recibidos en createGateRegistro:');
-    console.log('preregistro_id:', preregistro_id);
-    console.log('admin_id:', admin_id);
-    console.log('gate_guard_id:', gate_guard_id);
-    console.log('visitor_id:', visitor_id);
-    console.log('reason:', reason);
     // Validar datos obligatorios
     if (!gate_guard_id) {
       throw new RegistroError(
@@ -504,7 +497,6 @@ async function getAllRegistros() {
 async function getRegistroById(id) {
   try {
     const validId = validateId(id);
-    console.log('Valid ID:', validId);
     
     // Obtener datos básicos del registro
     const { rows } = await pool.query(`
@@ -521,7 +513,6 @@ async function getRegistroById(id) {
     
     // Si hay un visitante, obtener sus detalles
     if (registro.visitor_id !== null) {
-      console.log('visitor_id found, fetching visitor details');
       const visitorResult = await pool.query(`
         SELECT v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path
         FROM visitors v
@@ -535,7 +526,6 @@ async function getRegistroById(id) {
     
     // Si hay una persona visitada, obtener sus detalles
     if (registro.person_visited_id !== null) {
-      console.log('person_visited_id found, fetching user details');
       const userResult = await pool.query(`
         SELECT u.name as person_visited_name, r.name as person_visited_role
         FROM users u

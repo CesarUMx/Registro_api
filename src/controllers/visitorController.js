@@ -63,10 +63,6 @@ async function showVisitor(req, res, next) {
  */
 async function createNewVisitor(req, res, next) {
   try {
-    console.log('=== SOLICITUD RECIBIDA PARA CREAR VISITANTE ===');
-    console.log('Body:', req.body);
-    console.log('Files:', req.files);
-    
     // 1) Extrae los datos de texto
     const { visitor_name, phone, email, company, type } = req.body;
 

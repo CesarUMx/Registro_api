@@ -5,11 +5,7 @@ const userModel = require('../models/userManagementModel');
 // Obtener todos los usuarios
 async function getAllUsers(req, res, next) {
   try {
-    console.log('Obteniendo todos los usuarios');
-    
     const users = await userModel.getAllUsers();
-    
-    console.log(`Se encontraron ${users.length} usuarios`);
     res.json({ ok: true, users });
   } catch (err) {
     console.error('Error al obtener usuarios:', err);
@@ -21,16 +17,13 @@ async function getAllUsers(req, res, next) {
 async function getUserById(req, res, next) {
   try {
     const { id } = req.params;
-    console.log(`Obteniendo usuario con ID: ${id}`);
-    
     const user = await userModel.getUserById(id);
     
     if (!user) {
-      console.log(`Usuario con ID ${id} no encontrado`);
+      console.error(`Usuario con ID ${id} no encontrado`);
       return res.status(404).json({ ok: false, err: 'Usuario no encontrado' });
     }
     
-    console.log('Usuario encontrado');
     res.json({ ok: true, user });
   } catch (err) {
     console.error(`Error al obtener usuario con ID ${req.params.id}:`, err);
@@ -42,13 +35,12 @@ async function getUserById(req, res, next) {
 async function createUser(req, res, next) {
   try {
     const { username, name, email, password, role } = req.body;
-    console.log('Creando nuevo usuario:', { username, name, email, role });
     
     // Verificar si el usuario ya existe
     const userExists = await userModel.checkUserExists(username, email);
     
     if (userExists) {
-      console.log('El usuario o email ya existe');
+      console.error('El usuario o email ya existe');
       return res.status(400).json({ ok: false, err: 'El nombre de usuario o email ya está en uso' });
     }
     
@@ -56,7 +48,7 @@ async function createUser(req, res, next) {
     const roleId = await userModel.getRoleIdByName(role);
     
     if (!roleId) {
-      console.log(`Rol '${role}' no encontrado`);
+      console.error(`Rol '${role}' no encontrado`);
       return res.status(400).json({ ok: false, err: 'Rol no válido' });
     }
     
@@ -73,8 +65,6 @@ async function createUser(req, res, next) {
     };
     
     const newUser = await userModel.createUser(userData);
-    
-    console.log('Usuario creado con éxito');
     res.status(201).json({ ok: true, user: newUser });
   } catch (err) {
     console.error('Error al crear usuario:', err);
@@ -87,13 +77,12 @@ async function updateUser(req, res, next) {
   try {
     const { id } = req.params;
     const { username, name, email, role, password } = req.body;
-    console.log(`Actualizando usuario con ID: ${id}`);
     
     // Verificar si el usuario existe
     const user = await userModel.getUserById(id);
     
     if (!user) {
-      console.log(`Usuario con ID ${id} no encontrado`);
+      console.error(`Usuario con ID ${id} no encontrado`);
       return res.status(404).json({ ok: false, err: 'Usuario no encontrado' });
     }
     
@@ -106,7 +95,7 @@ async function updateUser(req, res, next) {
       );
       
       if (userExists) {
-        console.log('El nombre de usuario o email ya está en uso por otro usuario');
+        console.error('El nombre de usuario o email ya está en uso por otro usuario');
         return res.status(400).json({ ok: false, err: 'El nombre de usuario o email ya está en uso por otro usuario' });
       }
     }
@@ -134,7 +123,7 @@ async function updateUser(req, res, next) {
       const roleId = await userModel.getRoleIdByName(role);
       
       if (!roleId) {
-        console.log(`Rol '${role}' no encontrado`);
+        console.error(`Rol '${role}' no encontrado`);
         return res.status(400).json({ ok: false, err: 'Rol no válido' });
       }
       
@@ -157,7 +146,6 @@ async function updateUser(req, res, next) {
     const updateData = { fields, values };
     const updatedUser = await userModel.updateUser(id, updateData);
     
-    console.log('Usuario actualizado con éxito');
     res.json({ ok: true, user: updatedUser });
   } catch (err) {
     console.error(`Error al actualizar usuario con ID ${req.params.id}:`, err);
@@ -169,20 +157,17 @@ async function updateUser(req, res, next) {
 async function deleteUser(req, res, next) {
   try {
     const { id } = req.params;
-    console.log(`Eliminando usuario con ID: ${id}`);
     
     // Verificar si el usuario existe
     const user = await userModel.getUserById(id);
     
     if (!user) {
-      console.log(`Usuario con ID ${id} no encontrado`);
+      console.error(`Usuario con ID ${id} no encontrado`);
       return res.status(404).json({ ok: false, err: 'Usuario no encontrado' });
     }
     
     // Eliminar el usuario
     await userModel.deleteUser(id);
-    
-    console.log('Usuario eliminado con éxito');
     res.json({ ok: true, message: 'Usuario eliminado correctamente' });
   } catch (err) {
     console.error(`Error al eliminar usuario con ID ${req.params.id}:`, err);
@@ -193,11 +178,7 @@ async function deleteUser(req, res, next) {
 // Obtener usuarios con rol admin y sysadmin
 async function getAdminUsers(req, res, next) {
   try {
-    console.log('Obteniendo usuarios admin y sysadmin');
-    
     const users = await userModel.getAdminUsers();
-    
-    console.log(`Se encontraron ${users.length} usuarios admin/sysadmin`);
     res.json({ ok: true, data: users });
   } catch (err) {
     console.error('Error al obtener usuarios admin/sysadmin:', err);

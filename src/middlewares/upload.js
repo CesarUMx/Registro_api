@@ -6,7 +6,6 @@ const fs      = require('fs');
 // Asegurarse de que la carpeta uploads exista
 if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads', { recursive: true });
-  console.log('Carpeta uploads creada');
 }
 
 // 1. Configuración del disco con mejor manejo de errores
@@ -42,7 +41,6 @@ function fileFilter(req, file, cb) {
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    console.log('Tipo de archivo rechazado:', file.mimetype);
     cb(new Error(`Solo se permiten imágenes (${allowedMimes.join(', ')})`), false);
   }
 }

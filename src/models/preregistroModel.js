@@ -154,10 +154,6 @@ async function updatePreregistroById(id, data) {
     const sets = keys.map((k, i) => `${k} = $${i+1}`).join(',');
     const values = keys.map(k => data[k]);
 
-    console.log('Campos a actualizar:', keys);
-    console.log('Valores a actualizar:', values);
-    console.log('Consulta SQL:', `UPDATE preregistro SET ${sets}, updated_at = now() WHERE id = $${keys.length + 1} RETURNING *`);
-
     const { rows } = await pool.query(
       `UPDATE preregistro
          SET ${sets}, updated_at = now()
@@ -165,8 +161,6 @@ async function updatePreregistroById(id, data) {
        RETURNING *`,
       [...values, validId]
     );
-    
-    console.log('Resultado de la actualización:', rows[0]);
     
     if (rows.length === 0) {
       throw new PreregistroError(

@@ -120,7 +120,6 @@ async function createVisitor({ visitor_name, visitor_id_photo_path, phone, email
     
     // Si no hay foto de identificación (caso de visitante sin vehículo)
     if (!visitor_id_photo_path && type === 'sin_vehiculo') {
-      console.log('Caso: Visitante sin vehículo sin foto de identificación');
       query = `
         INSERT INTO visitors
           (visitor_name, phone, email, company, type)
@@ -130,7 +129,6 @@ async function createVisitor({ visitor_name, visitor_id_photo_path, phone, email
       `;
       params = [visitor_name, phone, email, company, type];
     } else {
-      console.log('Caso: Visitante normal con foto de identificación');
       query = `
         INSERT INTO visitors
           (visitor_name, visitor_id_photo_path, phone, email, company, type)
@@ -140,9 +138,6 @@ async function createVisitor({ visitor_name, visitor_id_photo_path, phone, email
       `;
       params = [visitor_name, visitor_id_photo_path, phone, email, company, type];
     }
-    
-    console.log('Consulta SQL:', query);
-    console.log('Parámetros:', params);
     
     const { rows } = await pool.query(query, params);
     

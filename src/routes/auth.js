@@ -12,8 +12,6 @@ router.post('/logout', verifyJWT, logout);
 // Ruta para verificar si el token es válido
 router.get('/verify', verifyJWT, async (req, res) => {
   try {
-    // Si llegamos aquí, el token es válido (el middleware verifyJWT ya lo verificó)
-    console.log('Iniciando verificación de token para usuario ID:', req.user.userId);
     
     // Validar que el ID de usuario existe
     if (!req.user || !req.user.userId) {
@@ -39,12 +37,6 @@ router.get('/verify', verifyJWT, async (req, res) => {
       const { rows } = await Promise.race([queryPromise, timeoutPromise]);
       
       const userData = rows[0] || {};
-      
-      console.log('Verificación de token exitosa para usuario:', {
-        userId: req.user.userId,
-        role: req.user.role,
-        guard_type: userData.guard_type || req.user.guard_type
-      });
       
       return res.status(200).json({ 
         ok: true, 
@@ -83,7 +75,6 @@ async (req, res, next) => {
     // Si el usuario tiene un tipo de guardia, incluirlo en el token
     if (req.user.guard_type) {
       tokenPayload.guard_type = req.user.guard_type;
-      console.log('Incluyendo tipo de guardia en el token OAuth:', req.user.guard_type);
     }
     
     const token = jwt.sign(

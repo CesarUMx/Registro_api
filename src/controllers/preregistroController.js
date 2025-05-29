@@ -217,10 +217,6 @@ async function editPreregistro(req, res, next) {
       });
     }
     
-    // Imprimir el preregistro actual para depuración
-    console.log('Preregistro actual:', preregistro);
-    console.log('Datos recibidos en el body:', req.body);
-    
     // Preparar los datos a actualizar
     const payload = {};
     
@@ -247,8 +243,6 @@ async function editPreregistro(req, res, next) {
         payload.parking_access = false;
       }
     }
-    
-    console.log('Payload a enviar para actualización:', payload);
     
     if (Object.keys(payload).length === 0) {
       return res.status(400).json({ 

@@ -31,7 +31,6 @@ router.delete(
   verifyJWT,
   requireRole('sysadmin', 'admin'),
   (req, res, next) => {
-    console.log('Ruta de eliminación de asociación accedida:', req.path);
     return removeDriverFromVisitor(req, res, next);
   }
 );
@@ -53,7 +52,6 @@ router.get('/test-visitor-driver-route', (req, res) => {
 router.delete('/eliminar-asociacion/:visitorId/:driverId', verifyJWT, requireRole('sysadmin', 'admin'), async (req, res, next) => {
   try {
     const { visitorId, driverId } = req.params;
-    console.log(`Intentando eliminar asociación entre visitante ${visitorId} y conductor ${driverId}`);
     
     await removeDriverFromVisitor(req, res, next);
   } catch (err) {
