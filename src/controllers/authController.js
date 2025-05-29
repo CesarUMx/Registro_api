@@ -8,7 +8,7 @@ async function login(req, res, next) {
     const { username, password } = req.body;
     
     const { rows } = await pool.query(
-      `SELECT u.id, u.username, u.password_hash, r.name AS role, u.guard_type
+      `SELECT u.id, u.username, u.name, u.password_hash, r.name AS role, u.guard_type
        FROM users u
        JOIN roles r ON r.id = u.role_id
        WHERE u.username = $1`, 
@@ -47,7 +47,16 @@ async function login(req, res, next) {
     // Almacenar en tabla tokens
     await saveToken(user.id, token);
     
-    res.json({ ok:true, token });
+    // Incluir información adicional del usuario en la respuesta
+    res.json({ 
+      ok: true, 
+      token,
+      user: {
+        username: user.username,
+        name: user.name || '',
+        role: user.role
+      }
+    });
   } catch (err) {
     console.error('Error en el proceso de login:', err);
     next(err);

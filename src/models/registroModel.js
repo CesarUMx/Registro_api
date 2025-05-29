@@ -471,10 +471,12 @@ async function getAllRegistros() {
     const { rows } = await pool.query(`
       SELECT r.*, 
              v.visitor_name, v.phone, v.email, v.company, v.type, v.visitor_id_photo_path,
-             d.driver_name, d.driver_id_photo_path, d.plate_photo_path
+             d.driver_name, d.driver_id_photo_path, d.plate_photo_path, 
+             u.name as person_visited_name
       FROM registro r
       LEFT JOIN visitors v ON r.visitor_id = v.id
       LEFT JOIN drivers d ON r.driver_id = d.id
+      LEFT JOIN users u ON r.person_visited_id = u.id
       ORDER BY r.entered_at DESC
     `);
     return rows;

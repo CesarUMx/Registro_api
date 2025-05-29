@@ -20,7 +20,21 @@ const errorHandler = require('./middlewares/errorHandler');
 
 // Configuración CORS
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'http://172.18.0.45',
+      'http://localhost',
+      'http://DAROKDEV.mondragonmexico.net'
+    ];
+    // Permitir solicitudes sin origen (como aplicaciones móviles o curl)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('Origen bloqueado por CORS:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 

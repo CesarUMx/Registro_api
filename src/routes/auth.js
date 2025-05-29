@@ -94,8 +94,27 @@ async (req, res, next) => {
     // Obtenemos la URL del frontend desde las variables de entorno o usamos la URL de Vite por defecto
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     
-    // Redirigimos al frontend con el token como parámetro de consulta
-    res.redirect(`${frontendUrl}?token=${token}&role=${req.user.role}`);
+    // Obtenemos el nombre del usuario si existe
+    let userName = '';
+    if (req.user.name) {
+      userName = req.user.name;
+    } else {
+      // Si no hay nombre en req.user, intentar obtenerlo de la base de datos
+      try {
+        const userResult = await pool.query(
+          `SELECT name FROM users WHERE id = $1`,
+          [req.user.id]
+        );
+        if (userResult.rows.length > 0 && userResult.rows[0].name) {
+          userName = userResult.rows[0].name;
+        }
+      } catch (error) {
+        console.error('Error al obtener el nombre del usuario:', error);
+      }
+    }
+    
+    // Redirigimos al frontend con el token, rol y nombre como parámetros de consulta
+    res.redirect(`${frontendUrl}?token=${token}&role=${req.user.role}&name=${encodeURIComponent(userName)}`);
   } catch (err) {
     next(err);
   }
