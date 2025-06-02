@@ -25,7 +25,8 @@ app.use(cors({
       process.env.FRONTEND_URL || 'http://localhost:5173',
       'http://172.18.0.45',
       'http://localhost',
-      'http://DAROKDEV.mondragonmexico.net'
+      'http://DAROKDEV.mondragonmexico.net',
+      'http://189.206.100.75'
     ];
     // Permitir solicitudes sin origen (como aplicaciones móviles o curl)
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {

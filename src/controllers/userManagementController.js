@@ -5,7 +5,15 @@ const userModel = require('../models/userManagementModel');
 // Obtener todos los usuarios
 async function getAllUsers(req, res, next) {
   try {
-    const users = await userModel.getAllUsers();
+    let users;
+    
+    // Si es supervisor, solo mostrar usuarios con rol guardia
+    if (req.user.role === 'guardia' && req.user.guard_type === 'supervisor') {
+      users = await userModel.getGuardUsers();
+    } else {
+      users = await userModel.getAllUsers();
+    }
+    
     res.json({ ok: true, users });
   } catch (err) {
     console.error('Error al obtener usuarios:', err);
@@ -34,7 +42,15 @@ async function getUserById(req, res, next) {
 // Crear un nuevo usuario
 async function createUser(req, res, next) {
   try {
-    const { username, name, email, password, role } = req.body;
+    const { username, name, email, password, role, guardType } = req.body;
+    
+    // Si es supervisor, solo permitir crear usuarios con rol guardia
+    if (req.user.role === 'guardia' && req.user.guard_type === 'supervisor' && role !== 'guardia') {
+      return res.status(403).json({ 
+        ok: false, 
+        err: 'Como supervisor, solo puedes crear usuarios con rol de guardia' 
+      });
+    }
     
     // Verificar si el usuario ya existe
     const userExists = await userModel.checkUserExists(username, email);
@@ -63,6 +79,11 @@ async function createUser(req, res, next) {
       passwordHash,
       roleId
     };
+    
+    // Si es un guardia, incluir el tipo de guardia
+    if (role === 'guardia' && guardType) {
+      userData.guardType = guardType;
+    }
     
     const newUser = await userModel.createUser(userData);
     res.status(201).json({ ok: true, user: newUser });
@@ -186,11 +207,45 @@ async function getAdminUsers(req, res, next) {
   }
 }
 
+// Actualizar solo el tipo de guardia (para supervisores)
+async function updateGuardType(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { guardType } = req.body;
+    
+    if (!guardType) {
+      return res.status(400).json({ ok: false, err: 'Tipo de guardia no proporcionado' });
+    }
+    
+    // Verificar que el usuario a actualizar exista y sea guardia
+    const user = await userModel.getUserById(id);
+    
+    if (!user) {
+      return res.status(404).json({ ok: false, err: 'Usuario no encontrado' });
+    }
+    
+    if (user.role !== 'guardia') {
+      return res.status(403).json({ 
+        ok: false, 
+        err: 'Solo puedes modificar el tipo de guardia para usuarios con rol de guardia' 
+      });
+    }
+    
+    // Actualizar el tipo de guardia
+    const updatedUser = await userModel.updateGuardType(id, guardType);
+    res.json({ ok: true, user: updatedUser });
+  } catch (err) {
+    console.error(`Error al actualizar tipo de guardia para usuario ${req.params.id}:`, err);
+    next(err);
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
   createUser,
   updateUser,
   deleteUser,
-  getAdminUsers
+  getAdminUsers,
+  updateGuardType
 };

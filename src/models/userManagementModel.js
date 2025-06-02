@@ -5,7 +5,7 @@ const pool = require('../config/db');
 async function getAllUsers() {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.username, u.name, u.email, u.created_at, r.name AS role
+      SELECT u.id, u.username, u.name, u.email, u.created_at, r.name AS role, u.guard_type
       FROM users u
       JOIN roles r ON r.id = u.role_id
       ORDER BY u.created_at DESC
@@ -21,7 +21,7 @@ async function getAllUsers() {
 async function getUserById(id) {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.username, u.name, u.email, u.created_at, r.name AS role
+      SELECT u.id, u.username, u.name, u.email, u.created_at, r.name AS role, u.guard_type
       FROM users u
       JOIN roles r ON r.id = u.role_id
       WHERE u.id = $1
@@ -75,14 +75,25 @@ async function getRoleIdByName(roleName) {
 // Crear un nuevo usuario
 async function createUser(userData) {
   try {
-    const { username, name, email, passwordHash, roleId } = userData;
+    const { username, name, email, passwordHash, roleId, guardType } = userData;
     
-    const result = await pool.query(
-      `INSERT INTO users (username, name, email, password_hash, role_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       RETURNING id, username, name, email, created_at`,
-      [username, name, email, passwordHash, roleId]
-    );
+    // Si es un guardia y se especificó un tipo, incluirlo en la consulta
+    let query;
+    let params;
+    
+    if (guardType) {
+      query = `INSERT INTO users (username, name, email, password_hash, role_id, guard_type, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, NOW())
+              RETURNING id, username, name, email, guard_type, created_at`;
+      params = [username, name, email, passwordHash, roleId, guardType];
+    } else {
+      query = `INSERT INTO users (username, name, email, password_hash, role_id, created_at)
+              VALUES ($1, $2, $3, $4, $5, NOW())
+              RETURNING id, username, name, email, created_at`;
+      params = [username, name, email, passwordHash, roleId];
+    }
+    
+    const result = await pool.query(query, params);
     
     return result.rows[0];
   } catch (err) {
@@ -140,6 +151,41 @@ async function getAdminUsers() {
   }
 }
 
+// Actualizar solo el tipo de guardia
+async function updateGuardType(id, guardType) {
+  try {
+    const result = await pool.query(
+      `UPDATE users 
+       SET guard_type = $1 
+       WHERE id = $2 
+       RETURNING id, username, name, email, guard_type`,
+      [guardType, id]
+    );
+    
+    return result.rows[0];
+  } catch (err) {
+    console.error(`Error en modelo al actualizar tipo de guardia para usuario ${id}:`, err);
+    throw err;
+  }
+}
+
+// Obtener usuarios con rol guardia
+async function getGuardUsers() {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.username, u.name, u.email, u.created_at, r.name AS role, u.guard_type
+      FROM users u
+      JOIN roles r ON r.id = u.role_id
+      WHERE r.name = 'guardia'
+      ORDER BY u.created_at DESC
+    `);
+    return result.rows;
+  } catch (err) {
+    console.error('Error en modelo al obtener usuarios guardia:', err);
+    throw err;
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -148,5 +194,7 @@ module.exports = {
   createUser,
   updateUser,
   deleteUser,
-  getAdminUsers
+  getAdminUsers,
+  updateGuardType,
+  getGuardUsers
 };
