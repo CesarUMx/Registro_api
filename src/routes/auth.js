@@ -92,7 +92,7 @@ async (req, res, next) => {
 
     // 3) Redirigir al frontend con el token
     // Obtenemos la URL del frontend desde las variables de entorno o usamos la URL de Vite por defecto
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     
     // Obtenemos el nombre del usuario si existe
     let userName = '';
