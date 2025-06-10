@@ -320,6 +320,59 @@ async function searchVisitors(searchTerm) {
   }
 }
 
+/**
+ * Busca un visitante por su código de etiqueta
+ * @param {string} visitorTag - Código de etiqueta del visitante
+ * @returns {Promise<Object|null>} El visitante encontrado o null
+ * @throws {VisitorError} Si ocurre un error
+ */
+async function getVisitorByTag(visitorTag) {
+  try {
+    if (!visitorTag || typeof visitorTag !== 'string') {
+      throw new VisitorError(
+        'El código de etiqueta del visitante es requerido y debe ser una cadena de texto',
+        'INVALID_VISITOR_TAG',
+        400
+      );
+    }
+    
+    // Buscar en la tabla de relación registro_visitantes para encontrar el visitor_id asociado al código
+    const relationQuery = `
+      SELECT rv.visitor_id 
+      FROM registro_visitantes rv
+      WHERE rv.visitor_tag = $1
+      LIMIT 1
+    `;
+    
+    const relationResult = await pool.query(relationQuery, [visitorTag]);
+    
+    if (relationResult.rows.length === 0) {
+      return null;
+    }
+    
+    const visitorId = relationResult.rows[0].visitor_id;
+    
+    // Obtener los datos completos del visitante
+    const visitorQuery = `
+      SELECT * FROM visitors
+      WHERE id = $1
+    `;
+    
+    const { rows } = await pool.query(visitorQuery, [visitorId]);
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    if (error instanceof VisitorError) {
+      throw error;
+    }
+    console.error('Error en getVisitorByTag:', error);
+    throw new VisitorError(
+      `Error al buscar visitante por código: ${error.message}`,
+      'VISITOR_SEARCH_ERROR',
+      500
+    );
+  }
+}
+
 module.exports = {
   getAllVisitors,
   getVisitorById,
@@ -327,5 +380,6 @@ module.exports = {
   updateVisitor,
   deleteVisitor,
   searchVisitors,
+  getVisitorByTag,
   VisitorError
 };

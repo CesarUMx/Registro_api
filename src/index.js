@@ -16,6 +16,8 @@ const userManagementRouter = require('./routes/userManagementRoutes');
 const visitorRouter = require('./routes/visitors');
 const driverRouter = require('./routes/drivers');
 const visitorDriverRouter = require('./routes/visitorDrivers');
+const registroVisitantesRouter = require('./routes/registroVisitantesRoutes');
+const codeRouter = require('./routes/codeRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 // Configuración CORS
@@ -50,7 +52,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Ruta raíz
 app.get('/', (req, res) => {
-  res.json({ ok: true, message: 'API corriendo correctamente produccion' });
+  res.json({ ok: true, message: 'API corriendo correctamente pruebas' });
 });
 
 // Rutas de autenticación (sin prefijo /api para mantener compatibilidad con Google OAuth)
@@ -71,6 +73,8 @@ app.use('/api/drivers', driverRouter);
 // Montar el enrutador de relaciones visitante-conductor directamente en la raíz
 // porque sus rutas ya incluyen los prefijos completos
 app.use(visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
+app.use('/api', registroVisitantesRouter); // Para rutas de visitantes de registro
+app.use('/api/code', codeRouter); // Para rutas de búsqueda y validación de códigos
 app.use('/api/invites', invitesRouter);  
 app.use('/preregistros', preregistrosRouter);
 app.use('/api/registros', registrosRouter);

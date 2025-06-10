@@ -37,11 +37,38 @@ async function getUserById(id) {
 // Verificar si un usuario existe por username o email
 async function checkUserExists(username, email, excludeId = null) {
   try {
-    let query = 'SELECT * FROM users WHERE username = $1 OR email = $2';
-    const params = [username, email];
+    // Si no se proporciona username o email, no hay nada que verificar
+    if (!username && !email) {
+      return false;
+    }
     
+    // Construir la consulta dinámicamente basada en los parámetros proporcionados
+    let conditions = [];
+    const params = [];
+    let paramIndex = 1;
+    
+    if (username) {
+      conditions.push(`username = $${paramIndex}`);
+      params.push(username);
+      paramIndex++;
+    }
+    
+    if (email) {
+      conditions.push(`email = $${paramIndex}`);
+      params.push(email);
+      paramIndex++;
+    }
+    
+    // Si no hay condiciones, no hay nada que verificar
+    if (conditions.length === 0) {
+      return false;
+    }
+    
+    let query = `SELECT * FROM users WHERE (${conditions.join(' OR ')})`;
+    
+    // Excluir el ID del usuario que se está actualizando
     if (excludeId) {
-      query += ' AND id != $3';
+      query += ` AND id != $${paramIndex}`;
       params.push(excludeId);
     }
     
