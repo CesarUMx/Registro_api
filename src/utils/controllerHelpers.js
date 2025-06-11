@@ -49,8 +49,25 @@ function handleError(res, error) {
   });
 }
 
+/**
+ * Valida campos requeridos en un objeto
+ * @param {string[]} fields - Campos requeridos
+ * @param {Object} body - Objeto a validar
+ * @throws {Error} Si faltan campos requeridos
+ */
+function checkRequiredFields(fields, body) {
+  const missing = fields.filter(field => !(field in body));
+  if (missing.length > 0) {
+    const error = new Error(`Faltan campos requeridos: ${missing.join(', ')}`);
+    error.status = 400;
+    error.code = 'MISSING_FIELDS';
+    throw error;
+  }
+}
+
 module.exports = {
   withTransaction,
   validateGuardType,
-  handleError
+  handleError,
+  checkRequiredFields
 };
