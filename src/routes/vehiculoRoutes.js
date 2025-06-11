@@ -8,7 +8,8 @@ const {
   getVehiculos,
   getVehiculoByIdHandler,
   deleteVehiculoHandler,
-  putVehiculo
+  putVehiculo,
+  searchVehiculoHandler
 } = require('../controllers/vehiculoController');
 
 router.use(verifyJWT);
@@ -18,6 +19,7 @@ router.get('/', getVehiculos); // visitante_id requerido
 router.get('/:id', getVehiculoByIdHandler);
 router.delete('/:id', requireRole(['admin', 'sysadmin']), deleteVehiculoHandler);
 router.put('/:id', requireRole(['admin', 'sysadmin']), upload.single('foto_placa'), putVehiculo);
+router.get('/search', searchVehiculoHandler);
 
 
 module.exports = router;

@@ -3,7 +3,8 @@ const {
     getVehiculosByVisitante,
     getVehiculoById,
     deleteVehiculo,
-    updateVehiculo
+    updateVehiculo,
+    searchVehiculoByPlaca
   } = require('../models/vehiculoModel');
   
   const { handleError, checkRequiredFields } = require('../utils/controllerHelpers');
@@ -71,12 +72,32 @@ const {
       handleError(res, error);
     }
   }
+
+  async function searchVehiculoHandler(req, res) {
+    try {
+      const placa = req.query.placa;
+      if (!placa) {
+        return res.status(400).json({ ok: false, error: 'Parámetro "placa" requerido' });
+      }
+  
+      const vehiculo = await searchVehiculoByPlaca(placa.trim());
+      if (!vehiculo) {
+        return res.status(404).json({ ok: false, error: 'Vehículo no encontrado' });
+      }
+  
+      res.json({ ok: true, vehiculo });
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+  
   
   module.exports = {
     postVehiculo,
     getVehiculos,
     getVehiculoByIdHandler,
     deleteVehiculoHandler,
-    putVehiculo
+    putVehiculo,
+    searchVehiculoHandler
   };
   

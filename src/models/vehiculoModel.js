@@ -49,11 +49,21 @@ async function updateVehiculo(id, fields) {
     return result.rows[0];
   }
 
+  async function searchVehiculoByPlaca(placa) {
+    const result = await pool.query(
+      `SELECT * FROM vehiculos WHERE placa ILIKE $1 AND activo = true LIMIT 1`,
+      [placa]
+    );
+    return result.rows[0];
+  }
+  
+
   
 module.exports = {
     createVehiculo,
     getVehiculosByVisitante,
     getVehiculoById,
     deleteVehiculo,
-    updateVehiculo
+    updateVehiculo,
+    searchVehiculoByPlaca
 }
