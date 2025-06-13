@@ -10,6 +10,7 @@ const userManagementRouter = require('./routes/userManagementRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 const vehiculoRouter = require('./routes/vehiculoRoutes');
 const visitanteRouter = require('./routes/visitanteRoutes');
+const registroRouter = require('./routes/registroRoutes');
 
 // Configuración CORS
 app.use(cors({
@@ -56,7 +57,7 @@ app.get('/login-failure', (req, res) => {
 app.use('/api/users', userManagementRouter);
 app.use('/api/vehiculos', vehiculoRouter);
 app.use('/api/visitantes', visitanteRouter);
-
+app.use('/api/registro', registroRouter);
 // Para cualquier ruta no definida:
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta no encontrada' });

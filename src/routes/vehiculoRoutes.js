@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const upload = require('../middlewares/upload');
-const { verifyJWT, requireRole } = require('../middlewares/auth');
+const { verifyJWT, requireRole, requireGuardType } = require('../middlewares/auth');
 
 const {
   postVehiculo,
@@ -14,7 +14,7 @@ const {
 
 router.use(verifyJWT);
 
-router.post('/', requireRole(['admin', 'sysadmin']), upload.single('foto_placa'), postVehiculo);
+router.post('/', requireGuardType('caseta'), upload.single('foto_placa'), postVehiculo);
 router.get('/', getVehiculos); // visitante_id requerido
 router.get('/:id', getVehiculoByIdHandler);
 router.delete('/:id', requireRole(['admin', 'sysadmin']), deleteVehiculoHandler);

@@ -153,7 +153,10 @@ async function updateUser(id, updateData) {
 // Eliminar un usuario
 async function deleteUser(id) {
   try {
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    await pool.query(
+      'UPDATE users SET activo = false WHERE id = $1',
+      [id]
+    );
     return true;
   } catch (err) {
     console.error(`Error en modelo al eliminar usuario con ID ${id}:`, err);

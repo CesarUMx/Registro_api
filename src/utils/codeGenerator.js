@@ -24,6 +24,16 @@ function generateDriverTag(registrationCode) {
 }
 
 /**
+ * Genera un código de etiqueta especial
+ * @param {string} registrationCode - Código base del registro (ej. UMX123ABC)
+ * @param {string} suffix - Sufijo especial (ej. PROV, CND)
+ * @returns {string}
+ */
+function generateSpecialTag(registrationCode, suffix) {
+  return `${registrationCode}-${suffix}`;
+}
+
+/**
  * Genera un código de etiqueta para visitante
  * @param {string} registrationCode - Código de registro base
  * @param {number} visitorNumber - Número secuencial del visitante
@@ -52,5 +62,6 @@ module.exports = {
   generateRegistrationCode,
   generateDriverTag,
   generateVisitorTag,
-  normalizeText
+  normalizeText,
+  generateSpecialTag
 };

@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { normalizeName } = require('../utils/controllerHelpers');
 
 async function createVisitante({ nombre, tipo, telefono, empresa, foto_persona, foto_ine }) {
   const result = await pool.query(
@@ -19,33 +20,30 @@ async function getVisitanteById(id) {
 }
 
 async function searchVisitantes(query) {
-    if (query && query.trim().length >= 2) {
-      return (
-        await pool.query(
-          `SELECT id, nombre, telefono, empresa, tipo
-           FROM visitantes
-           WHERE activo = true AND (
-           LOWER(nombre) LIKE LOWER($1)
-           OR telefono ILIKE $1
-           OR LOWER(empresa) LIKE LOWER($1)
-           )
-           ORDER BY nombre ASC
-           LIMIT 10`,
-          [`%${query}%`]
-        )
-      ).rows;
-    } else {
-      // traer todos si no hay búsqueda
-      return (
-        await pool.query(
-          `SELECT id, nombre, telefono, empresa, tipo
-           FROM visitantes
-           WHERE activo = true
-           ORDER BY nombre ASC`
-        )
-      ).rows;
-    }
+  const normalizado = normalizeName(query);
+
+  if (normalizado && normalizado.length >= 2) {
+    const result = await pool.query(
+      `SELECT id, nombre, telefono, empresa, tipo
+       FROM visitantes
+       WHERE activo = true AND (
+         nombre ILIKE $1
+       )
+       ORDER BY nombre ASC
+       LIMIT 10`,
+      [`%${normalizado}%`]
+    );
+    return result.rows;
+  } else {
+    const all = await pool.query(
+      `SELECT id, nombre, telefono, empresa, tipo
+       FROM visitantes
+       WHERE activo = true
+       ORDER BY nombre ASC`
+    );
+    return all.rows;
   }
+}
 
 async function updateVisitante(id, fields) {
   const keys = Object.keys(fields);

@@ -6,12 +6,13 @@ const {
     deleteVisitante
   } = require('../models/visitanteModel');
   
-  const { handleError, checkRequiredFields } = require('../utils/controllerHelpers');
+  const { handleError, checkRequiredFields, normalizeName } = require('../utils/controllerHelpers');
   
   // POST /api/visitantes crear visitante
   async function postVisitante(req, res) {
     try {
       const { nombre, tipo, telefono, empresa } = req.body;
+      const nombreNormalizado = normalizeName(nombre);
       const foto_persona = req.files?.foto_persona?.[0]?.filename;
       const foto_ine = req.files?.foto_ine?.[0]?.filename;
   
@@ -27,7 +28,7 @@ const {
       }
   
       const visitante = await createVisitante({
-        nombre,
+        nombre: nombreNormalizado,
         tipo,
         telefono,
         empresa,
@@ -76,6 +77,7 @@ const {
       const fields = req.body;
       if (req.files?.foto_persona?.[0]) fields.foto_persona = req.files.foto_persona[0].filename;
       if (req.files?.foto_ine?.[0]) fields.foto_ine = req.files.foto_ine[0].filename;
+      fields.nombre = normalizeName(fields.nombre);
   
       const updated = await updateVisitante(req.params.id, fields);
       res.json({ ok: true, visitante: updated });
