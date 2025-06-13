@@ -350,10 +350,73 @@ async function salidaEdificio(registroId, cantidad, notas, userId) {
     return { estatus };
 }
 
+async function salidaCaseta(registroId, idGuardia, notas, salieron) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+  
+      // 1. Obtener registro
+      const res = await client.query(
+        'SELECT id, estatus, n_visitantes, n_salieron FROM registro WHERE id = $1 FOR UPDATE',
+        [registroId]
+      );
+  
+      if (res.rows.length === 0) {
+        const error = new Error('Registro no encontrado');
+        error.status = 404;
+        error.code = 'REGISTRO_NOT_FOUND';
+        throw error;
+      }
+  
+      const registro = res.rows[0];
+  
+      // 2. Validar estatus permitido
+      if (!['transito', 'en caseta'].includes(registro.estatus)) {
+        const error = new Error(`No se puede marcar salida para un registro con estatus "${registro.estatus}"`);
+        error.status = 400;
+        error.code = 'ESTATUS_INVALIDO';
+        throw error;
+      }
+  
+      // 3. Validar número de salidas
+      if (salieron !== registro.n_visitantes) {
+        const error = new Error(`Solo han salido ${salieron} de ${registro.n_visitantes} personas ${registro.estatus === 'transito' ? 'del edificio' : 'de la caseta'}`);
+        error.status = 400;
+        error.code = 'SALIDAS_INCOMPLETAS';
+        throw error;
+      }
+
+      const notaTexto = typeof notas === 'string' ? notas : '';
+      console.log(notaTexto);
+  
+      // 4. Actualizar registro
+      await client.query(`
+        UPDATE registro
+        SET hora_salida_caseta = NOW(),
+            id_guardia_caseta_salida = $1,
+            estatus = 'completo',
+            notas = CONCAT(COALESCE(notas, ''), ' | Notas caseta: ', $2::text),
+            n_salieron = $4
+        WHERE id = $3
+      `, [idGuardia, notaTexto, registroId, salieron]);
+  
+      await client.query('COMMIT');
+  
+      return { ok: true };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  
+
 module.exports = {
     crearRegistroYConductor,
     agregarVisitantesEdificio,
     crearRegistroPeatonal,
     buscarRegistroPorCodigo,
-    salidaEdificio
+    salidaEdificio,
+    salidaCaseta
 };

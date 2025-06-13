@@ -1,4 +1,4 @@
-const { crearRegistroYConductor, agregarVisitantesEdificio, crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio } = require('../models/registroModel');
+const { crearRegistroYConductor, agregarVisitantesEdificio, crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio, salidaCaseta } = require('../models/registroModel');
 const { checkRequiredFields, handleError, validateGuardType, validatePersonaAVistar } = require('../utils/controllerHelpers');
 
 async function postRegistroEntradaCaseta(req, res) {
@@ -206,7 +206,7 @@ async function getRegistroPorCodigo(req, res) {
     }
   }
 
-  async function patchSalidaEdificio(req, res) {
+async function patchSalidaEdificio(req, res) {
     try {
       validateGuardType(req.user, ['entrada']);
   
@@ -232,10 +232,42 @@ async function getRegistroPorCodigo(req, res) {
     }
   }
 
+async function patchSalidaCaseta(req, res) {
+    try {
+      validateGuardType(req.user, ['caseta']); 
+  
+      const registroId = parseInt(req.params.id);
+      let notas = req.body.notas || '';
+      // Asegurar que salieron sea un número
+      const salieron = parseInt(req.body.salieron) || 0;
+
+      // CONVERTIR NOTAS A STRING
+      notas = notas.toString();
+  
+      if (isNaN(registroId)) {
+        const error = new Error('ID de registro inválido');
+        error.status = 400;
+        throw error;
+      }
+  
+      console.log("salieronC", salieron);
+      const resultado = await salidaCaseta(registroId, req.user.userId, notas, salieron);
+  
+      res.status(200).json({
+        ok: true,
+        mensaje: 'Salida por caseta registrada correctamente'
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+  
+
 module.exports = {
   postRegistroEntradaCaseta,
   patchEntradaEdificio,
   postEntradaPeatonal,
   getRegistroPorCodigo,
-  patchSalidaEdificio
+  patchSalidaEdificio,
+  patchSalidaCaseta
 };
