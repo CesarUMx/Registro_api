@@ -1,5 +1,5 @@
 const { crearRegistroYConductor, agregarVisitantesEdificio, crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio, salidaCaseta } = require('../models/registroModel');
-const { checkRequiredFields, handleError, validateGuardType, validatePersonaAVistar } = require('../utils/controllerHelpers');
+const { checkRequiredFields, handleError, validateGuardType, validarCampos } = require('../utils/controllerHelpers');
 
 async function postRegistroEntradaCaseta(req, res) {
   try {
@@ -58,52 +58,7 @@ async function patchEntradaEdificio(req, res) {
 
       const idPersonaVisitar = parseInt(req.body.id_persona_a_visitar);
 
-      if (!['prepa', 'universidad'].includes(edificio)) {
-        const error = new Error('El campo "edificio" debe ser "prepa" o "universidad"');
-        error.status = 400;
-        error.code = 'INVALID_EDIFICIO';
-        throw error;
-      }
-
-      if (idPersonaVisitar === undefined || idPersonaVisitar === null) {
-        const error = new Error('El campo "id_persona_a_visitar" es obligatorio');
-        error.status = 400;
-        error.code = 'MISSING_ID_VISITADO';
-        throw error;
-      }
-
-      await validatePersonaAVistar(idPersonaVisitar);
-
-      if (!motivo || motivo.trim() === '') {
-        const error = new Error('El campo "motivo" es obligatorio');
-        error.status = 400;
-        error.code = 'MISSING_MOTIVO';
-        throw error;
-      }
-  
-      if (!Array.isArray(visitantes) || visitantes.length === 0) {
-        const error = new Error('Se requiere al menos un visitante para ingresar al edificio');
-        error.status = 400;
-        error.code = 'NO_VISITANTES';
-        throw error;
-      }
-  
-      // Validar campos por visitante
-      for (const v of visitantes) {
-        if (!v.id_visitante || !v.tag_type) {
-          const error = new Error('Cada visitante debe incluir id_visitante y tag_type');
-          error.status = 400;
-          error.code = 'INVALID_VISITANTE_ENTRY';
-          throw error;
-        }
-  
-        if (v.tag_type === 'tarjeta' && !v.n_tarjeta) {
-          const error = new Error('n_tarjeta es obligatorio si el tag_type es "tarjeta"');
-          error.status = 400;
-          error.code = 'MISSING_TARJETA';
-          throw error;
-        }
-      }
+      validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
   
       const resultado = await agregarVisitantesEdificio(registroId, visitantes, req.user.userId, edificio, idPersonaVisitar, motivo);
   
@@ -123,51 +78,7 @@ async function postEntradaPeatonal(req, res) {
       const { visitantes, edificio, motivo} = req.body;
       const idPersonaVisitar = parseInt(req.body.id_persona_a_visitar);
   
-      if (!['prepa', 'universidad'].includes(edificio)) {
-        const error = new Error('El campo "edificio" debe ser "prepa" o "universidad"');
-        error.status = 400;
-        error.code = 'INVALID_EDIFICIO';
-        throw error;
-      }
-
-      if (idPersonaVisitar === undefined || idPersonaVisitar === null) {
-        const error = new Error('El campo "id_persona_a_visitar" es obligatorio');
-        error.status = 400;
-        error.code = 'MISSING_ID_VISITADO';
-        throw error;
-      }
-
-      await validatePersonaAVistar(idPersonaVisitar);
-  
-      if (!motivo || motivo.trim() === '') {
-        const error = new Error('El campo "motivo" es obligatorio');
-        error.status = 400;
-        error.code = 'MISSING_MOTIVO';
-        throw error;
-      }
-  
-      if (!Array.isArray(visitantes) || visitantes.length === 0) {
-        const error = new Error('Se requiere al menos un visitante para este registro');
-        error.status = 400;
-        error.code = 'NO_VISITANTES';
-        throw error;
-      }
-  
-      for (const v of visitantes) {
-        if (!v.id_visitante || !v.tag_type) {
-          const error = new Error('Cada visitante debe incluir id_visitante y tag_type');
-          error.status = 400;
-          error.code = 'INVALID_VISITANTE_ENTRY';
-          throw error;
-        }
-  
-        if (v.tag_type === 'tarjeta' && !v.n_tarjeta) {
-          const error = new Error('n_tarjeta es obligatorio si el tag_type es "tarjeta"');
-          error.status = 400;
-          error.code = 'MISSING_TARJETA';
-          throw error;
-        }
-      }
+      validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
   
       const resultado = await crearRegistroPeatonal({
         visitantes,

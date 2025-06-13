@@ -1,6 +1,5 @@
 // src/utils/controllerHelpers.js
 const pool = require('../config/db');
-
 /**
  * Ejecuta una función dentro de una transacción de base de datos
  * @param {Function} callback - Función a ejecutar dentro de la transacción
@@ -113,11 +112,64 @@ async function validatePersonaAVistar(idUsuario) {
 }
 
 
+async function validarCampos(edificio, idPersonaVisitar, motivo, visitantes) {
+
+  if (!['prepa', 'universidad'].includes(edificio)) {
+    const error = new Error('El campo "edificio" debe ser "prepa" o "universidad"');
+    error.status = 400;
+    error.code = 'INVALID_EDIFICIO';
+    throw error;
+  }
+
+  if (idPersonaVisitar === undefined || idPersonaVisitar === null) {
+    const error = new Error('El campo "id_persona_a_visitar" es obligatorio');
+    error.status = 400;
+    error.code = 'MISSING_ID_VISITADO';
+    throw error;
+  }
+
+  await validatePersonaAVistar(idPersonaVisitar);
+
+  if (!motivo || motivo.trim() === '') {
+    const error = new Error('El campo "motivo" es obligatorio');
+    error.status = 400;
+    error.code = 'MISSING_MOTIVO';
+    throw error;
+  }
+
+  if (!Array.isArray(visitantes) || visitantes.length === 0) {
+    const error = new Error('Se requiere al menos un visitante para ingresar al edificio');
+    error.status = 400;
+    error.code = 'NO_VISITANTES';
+    throw error;
+  }
+
+  // Validar campos por visitante
+  for (const v of visitantes) {
+    if (!v.id_visitante || !v.tag_type) {
+      const error = new Error('Cada visitante debe incluir id_visitante y tag_type');
+      error.status = 400;
+      error.code = 'INVALID_VISITANTE_ENTRY';
+      throw error;
+    }
+
+    if (v.tag_type === 'tarjeta' && !v.n_tarjeta) {
+      const error = new Error('n_tarjeta es obligatorio si el tag_type es "tarjeta"');
+      error.status = 400;
+      error.code = 'MISSING_TARJETA';
+      throw error;
+    }
+  }
+
+}
+
+
 module.exports = {
   withTransaction,
   validateGuardType,
   handleError,
   checkRequiredFields,
   normalizeName,
-  validatePersonaAVistar
+  validatePersonaAVistar,
+  validarCampos
 };

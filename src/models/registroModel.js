@@ -5,6 +5,7 @@ const {
     generateSpecialTag,
     generateVisitorTag
 } = require('../utils/codeGenerator');
+const { validateTarjetaDisponible } = require('../utils/modelsHelpers');
 
 async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoVisitanteConductor, nVisitantes, idGuardiaCaseta, tagType, nTarjeta = null, idPreregistro = null }) {
     const client = await pool.connect();
@@ -132,21 +133,7 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
         for (let i = 0; i < visitantes.length; i++) {
             const v = visitantes[i];
             if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
-                const tarjetaEnUso = await client.query(`
-                  SELECT rv.id
-                  FROM registro_visitantes rv
-                  JOIN registro r ON rv.id_registro = r.id
-                  WHERE rv.n_tarjeta = $1
-                    AND r.estatus != 'completo'
-                  LIMIT 1;
-                `, [v.n_tarjeta]);
-              
-                if (tarjetaEnUso.rows.length > 0) {
-                  const error = new Error(`La tarjeta ${v.n_tarjeta} ya está asignada a otro registro activo`);
-                  error.status = 400;
-                  error.code = 'TARJETA_EN_USO';
-                  throw error;
-                }
+                await validateTarjetaDisponible(v.n_tarjeta, client);
             }
             const codigo = generateVisitorTag(registro.code_registro, totalPrevisto + i + 1);
             codigos.push({ id_visitante: v.id_visitante, codigo });
@@ -220,22 +207,8 @@ async function crearRegistroPeatonal({ visitantes, edificio, motivo, idPersonaVi
         for (let i = 0; i < visitantes.length; i++) {
             const v = visitantes[i];
             if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
-                const tarjetaEnUso = await client.query(`
-                  SELECT rv.id
-                  FROM registro_visitantes rv
-                  JOIN registro r ON rv.id_registro = r.id
-                  WHERE rv.n_tarjeta = $1
-                    AND r.estatus != 'completo'
-                  LIMIT 1;
-                `, [v.n_tarjeta]);
-              
-                if (tarjetaEnUso.rows.length > 0) {
-                  const error = new Error(`La tarjeta ${v.n_tarjeta} ya está asignada a otro registro activo`);
-                  error.status = 400;
-                  error.code = 'TARJETA_EN_USO';
-                  throw error;
-                }
-              }
+                await validateTarjetaDisponible(v.n_tarjeta, client);
+            }
             const codigo = generateSpecialTag(codeRegistro, `P${String(i + 1).padStart(2, '0')}`);
             codigos.push({ id_visitante: v.id_visitante, codigo });
 
