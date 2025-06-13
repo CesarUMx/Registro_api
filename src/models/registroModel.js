@@ -12,6 +12,12 @@ async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoV
     try {
         await client.query('BEGIN');
 
+        let tipo_r = 'completo';
+
+        if (tipoVisitanteConductor === 'proveedor' || tipoVisitanteConductor === 'taxi o uber') {
+            tipo_r = 'proveedor';
+        }
+
         // 1. Insertar el registro (sin code_registro aún)
         const resultRegistro = await client.query(
             `INSERT INTO registro (
@@ -20,10 +26,11 @@ async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoV
          id_guardia_caseta,
          hora_entrada_caseta,
          n_visitantes,
-         estatus
-       ) VALUES ($1, $2, $3, NOW(), $4, 'en caseta')
+         estatus,
+         tipo_r
+       ) VALUES ($1, $2, $3, NOW(), $4, 'en caseta', $5)
        RETURNING id`,
-            [idPreregistro, idVehiculo, idGuardiaCaseta, nVisitantes]
+            [idPreregistro, idVehiculo, idGuardiaCaseta, nVisitantes, tipo_r]
         );
 
         const registroId = resultRegistro.rows[0].id;
@@ -185,9 +192,10 @@ async function crearRegistroPeatonal({ visitantes, edificio, motivo, idPersonaVi
            motivo,
            id_persona_a_visitar,
            estatus,
-           n_visitantes
+           n_visitantes,
+           tipo_r
          ) VALUES (
-           NOW(), $1, $2, $3, $4, 'en edificio', $5
+           NOW(), $1, $2, $3, $4, 'en edificio', $5, 'peatonal'
          ) RETURNING id`,
             [idGuardiaEntrada, edificio, motivo, idPersonaVisitar, visitantes.length]
         );
@@ -360,44 +368,44 @@ async function salidaEdificio(registroId, cantidad, notas, userId) {
 async function salidaCaseta(registroId, idGuardia, notas, salieron) {
     const client = await pool.connect();
     try {
-      await client.query('BEGIN');
-  
-      // 1. Obtener registro
-      const res = await client.query(
-        'SELECT id, estatus, n_visitantes, n_salieron FROM registro WHERE id = $1 FOR UPDATE',
-        [registroId]
-      );
-  
-      if (res.rows.length === 0) {
-        const error = new Error('Registro no encontrado');
-        error.status = 404;
-        error.code = 'REGISTRO_NOT_FOUND';
-        throw error;
-      }
-  
-      const registro = res.rows[0];
-  
-      // 2. Validar estatus permitido
-      if (!['transito', 'en caseta'].includes(registro.estatus)) {
-        const error = new Error(`No se puede marcar salida para un registro con estatus "${registro.estatus}"`);
-        error.status = 400;
-        error.code = 'ESTATUS_INVALIDO';
-        throw error;
-      }
-  
-      // 3. Validar número de salidas
-      if (salieron !== registro.n_visitantes) {
-        const error = new Error(`Solo han salido ${salieron} de ${registro.n_visitantes} personas ${registro.estatus === 'transito' ? 'del edificio' : 'de la caseta'}`);
-        error.status = 400;
-        error.code = 'SALIDAS_INCOMPLETAS';
-        throw error;
-      }
+        await client.query('BEGIN');
 
-      const notaTexto = typeof notas === 'string' ? notas : '';
-      console.log(notaTexto);
-  
-      // 4. Actualizar registro
-      await client.query(`
+        // 1. Obtener registro
+        const res = await client.query(
+            'SELECT id, estatus, n_visitantes, n_salieron FROM registro WHERE id = $1 FOR UPDATE',
+            [registroId]
+        );
+
+        if (res.rows.length === 0) {
+            const error = new Error('Registro no encontrado');
+            error.status = 404;
+            error.code = 'REGISTRO_NOT_FOUND';
+            throw error;
+        }
+
+        const registro = res.rows[0];
+
+        // 2. Validar estatus permitido
+        if (!['transito', 'en caseta'].includes(registro.estatus)) {
+            const error = new Error(`No se puede marcar salida para un registro con estatus "${registro.estatus}"`);
+            error.status = 400;
+            error.code = 'ESTATUS_INVALIDO';
+            throw error;
+        }
+
+        // 3. Validar número de salidas
+        if (salieron !== registro.n_visitantes) {
+            const error = new Error(`Solo han salido ${salieron} de ${registro.n_visitantes} personas ${registro.estatus === 'transito' ? 'del edificio' : 'de la caseta'}`);
+            error.status = 400;
+            error.code = 'SALIDAS_INCOMPLETAS';
+            throw error;
+        }
+
+        const notaTexto = typeof notas === 'string' ? notas : '';
+        console.log(notaTexto);
+
+        // 4. Actualizar registro
+        await client.query(`
         UPDATE registro
         SET hora_salida_caseta = NOW(),
             id_guardia_caseta_salida = $1,
@@ -406,18 +414,145 @@ async function salidaCaseta(registroId, idGuardia, notas, salieron) {
             n_salieron = $4
         WHERE id = $3
       `, [idGuardia, notaTexto, registroId, salieron]);
-  
-      await client.query('COMMIT');
-  
-      return { ok: true };
+
+        await client.query('COMMIT');
+
+        return { ok: true };
     } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
+        await client.query('ROLLBACK');
+        throw error;
     } finally {
-      client.release();
+        client.release();
     }
-  }
+}
+
+async function obtenerListadoRegistrosDataTable({ start, length, search, filtros }) {
+    const params = [];
+    let where = 'WHERE TRUE'; // base neutra
+
+    // Búsqueda solo en code_registro
+    if (search) {
+        params.push(`%${search}%`);
+        where += ` AND r.code_registro ILIKE $${params.length}`;
+    }
+
+    // Filtros
+    if (filtros.estatus) {
+        params.push(filtros.estatus);
+        where += ` AND r.estatus = $${params.length}`;
+    }
+    if (filtros.tipo_r) {
+        params.push(filtros.tipo_r);
+        where += ` AND r.tipo_r = $${params.length}`;
+    }
+    if (filtros.edificio) {
+        params.push(filtros.edificio);
+        where += ` AND r.edificio = $${params.length}`;
+    }
+
+    // Total general
+    const total = await pool.query(`SELECT COUNT(*) FROM registro`);
+    // Total con filtros
+    const totalFiltrado = await pool.query(`
+      SELECT COUNT(*) FROM registro r
+      LEFT JOIN users u ON u.id = r.id_persona_a_visitar
+      ${where}
+    `, params);
+
+    // Consulta final paginada
+    params.push(length, start);
+    const registros = await pool.query(`
+      SELECT r.id, r.code_registro, r.edificio, r.n_visitantes,
+             u.name AS persona_a_visitar, r.estatus, r.tipo_r
+      FROM registro r
+      LEFT JOIN users u ON u.id = r.id_persona_a_visitar
+      ${where}
+      ORDER BY r.fecha_create DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
+
+    return {
+        recordsTotal: parseInt(total.rows[0].count),
+        recordsFiltered: parseInt(totalFiltrado.rows[0].count),
+        data: registros.rows
+    };
+}
+
+async function obtenerDetalleRegistro(id) {
+    // 1. Registro principal
+    const result = await pool.query(`
+      SELECT 
+        r.id,
+        r.code_registro,
+        r.estatus,
+        r.tipo_r,
+        r.edificio,
+        r.n_visitantes,
+        r.n_salieron,
+        r.motivo,
+        r.notas,
+        r.id_persona_a_visitar,
+        r.hora_entrada_caseta,
+        r.hora_entrada_edificio,
+        r.hora_salida_edificio,
+        r.hora_salida_caseta,
+        r.fecha_create,
+        r.fecha_update,
+        r.id_vehiculo,
+        r.id_guardia_caseta,
+        r.id_guardia_edificio,
+        r.id_guardia_caseta_salida,
+        r.id_guardia_edificio_salida,
+        u.name AS persona_a_visitar
+      FROM registro r
+      LEFT JOIN users u ON u.id = r.id_persona_a_visitar
+      WHERE r.id = $1
+    `, [id]);
   
+    const registro = result.rows[0];
+    if (!registro) return null;
+  
+    // 2. Visitantes
+    const visitantesRes = await pool.query(`
+      SELECT 
+        rv.id,
+        rv.codigo,
+        rv.tag_type,
+        rv.n_tarjeta,
+        v.nombre AS nombre_visitante,
+        v.telefono,
+        v.empresa,
+        v.tipo,
+        v.foto_persona,
+        v.foto_ine,
+        v.activo
+      FROM registro_visitantes rv
+      JOIN visitantes v ON v.id = rv.id_visitante
+      WHERE rv.registro_id = $1
+      ORDER BY rv.codigo
+    `, [id]);
+  
+    // 3. Vehículo
+    let vehiculo = null;
+    if (registro.id_vehiculo) {
+      const vehiculoRes = await pool.query(`
+        SELECT 
+          v.id,
+          v.placa,
+          v.foto_placa
+        FROM vehiculos v
+        WHERE v.id = $1
+      `, [registro.id_vehiculo]);
+  
+      vehiculo = vehiculoRes.rows[0] || null;
+    }
+  
+    return {
+      registro,
+      visitantes: visitantesRes.rows,
+      vehiculo
+    };
+  }
 
 module.exports = {
     crearRegistroYConductor,
@@ -425,5 +560,7 @@ module.exports = {
     crearRegistroPeatonal,
     buscarRegistroPorCodigo,
     salidaEdificio,
-    salidaCaseta
+    salidaCaseta,
+    obtenerListadoRegistrosDataTable,
+    obtenerDetalleRegistro
 };
