@@ -11,12 +11,12 @@ const {
   
   async function postVehiculo(req, res) {
     try {
-      const { placa, id_visitante } = req.body;
+      const { placa } = req.body;
       const foto_placa = req.file?.filename || null;
   
-      checkRequiredFields(['placa', 'id_visitante'], req.body);
+      checkRequiredFields(['placa'], req.body);
   
-      const vehiculo = await createVehiculo({ foto_placa, placa, id_visitante });
+      const vehiculo = await createVehiculo({ foto_placa, placa });
       res.status(201).json({ ok: true, vehiculo });
     } catch (error) {
       handleError(res, error);
@@ -79,10 +79,9 @@ const {
       if (!placa) {
         return res.status(400).json({ ok: false, error: 'Parámetro "placa" requerido' });
       }
-  
       const vehiculo = await searchVehiculoByPlaca(placa.trim());
       if (!vehiculo) {
-        return res.status(404).json({ ok: false, error: 'Vehículo no encontrado' });
+        return res.status(200).json({ ok: false, error: 'Vehículo no encontrado' });
       }
   
       res.json({ ok: true, vehiculo });

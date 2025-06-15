@@ -1,10 +1,10 @@
 const pool = require('../config/db');
 
-async function createVehiculo({ foto_placa, placa, id_visitante }) {
+async function createVehiculo({ foto_placa, placa }) {
   const result = await pool.query(
-    `INSERT INTO vehiculos (foto_placa, placa, id_visitante)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [foto_placa, placa, id_visitante]
+    `INSERT INTO vehiculos (foto_placa, placa)
+     VALUES ($1, $2) RETURNING *`,
+    [foto_placa, placa]
   );
   return result.rows[0];
 }
@@ -22,7 +22,7 @@ async function getVehiculosByVisitante(visitante_id) {
 async function getVehiculoById(id) {
   const result = await pool.query(
     `SELECT * FROM vehiculos
-     WHERE id = $1 AND activo = true`,
+     WHERE id = $1`,
     [id]
   );
   return result.rows[0];
@@ -51,8 +51,8 @@ async function updateVehiculo(id, fields) {
 
   async function searchVehiculoByPlaca(placa) {
     const result = await pool.query(
-      `SELECT * FROM vehiculos WHERE placa ILIKE $1 AND activo = true LIMIT 1`,
-      [placa]
+      `SELECT * FROM vehiculos WHERE placa LIKE $1 LIMIT 1`,
+      [placa + '%']
     );
     return result.rows[0];
   }

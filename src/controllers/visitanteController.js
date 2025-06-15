@@ -49,6 +49,7 @@ const {
   
       if (term && term.trim().length >= 2) {
         const results = await searchVisitantes(term.trim());
+        console.log(results);
         return res.json({ ok: true, results });
       }
   
