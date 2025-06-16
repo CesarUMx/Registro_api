@@ -395,7 +395,7 @@ async function salidaCaseta(registroId, idGuardia, notas, salieron) {
 
         // 3. Validar número de salidas
         if (salieron !== registro.n_visitantes) {
-            const error = new Error(`Solo han salido ${salieron} de ${registro.n_visitantes} personas ${registro.estatus === 'transito' ? 'del edificio' : 'de la caseta'}`);
+            const error = new Error(`Estan saliendo ${salieron} de ${registro.n_visitantes} personas de la caseta`);
             error.status = 400;
             error.code = 'SALIDAS_INCOMPLETAS';
             throw error;
