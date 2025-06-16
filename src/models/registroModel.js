@@ -128,7 +128,7 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
         console.log('Total previsto:', totalPrevisto);
 
         if (totalPrevisto > registro.n_visitantes) {
-            throw Object.assign(new Error(`Se excede el número de personas que pueden ingresar al edificio. Ya hay ${totalActual} y se intentan agregar ${nuevos}`), {
+            throw Object.assign(new Error(`Se excede el número de personas que pueden ingresar al edificio. Ya hay ${totalActual} y se intentan agregar ${nuevos}, el conductor ya se cuenta`), {
                 status: 400,
                 code: 'LIMIT_EXCEEDED'
             });
