@@ -2,6 +2,17 @@ const pool = require('../config/db');
 const { normalizeName } = require('../utils/controllerHelpers');
 
 async function createVisitante({ nombre, tipo, telefono, empresa, foto_persona, foto_ine }) {
+
+  const normalizado = normalizeName(nombre);
+  const existe = await searchVisitantes(normalizado);
+
+  if (existe.length > 0) {
+    throw Object.assign(new Error('Visitante ya existe'), {
+      status: 400,
+      code: 'VISITANTE_EXISTS'
+    });
+  }
+
   const result = await pool.query(
     `INSERT INTO visitantes (nombre, tipo, telefono, empresa, foto_persona, foto_ine)
      VALUES ($1, $2, $3, $4, $5, $6)
