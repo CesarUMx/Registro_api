@@ -11,6 +11,7 @@ const errorHandler = require('./middlewares/errorHandler');
 const vehiculoRouter = require('./routes/vehiculoRoutes');
 const visitanteRouter = require('./routes/visitanteRoutes');
 const registroRouter = require('./routes/registroRoutes');
+const capturaRouter = require('./routes/capturaRoutes');
 
 // Configuración CORS
 app.use(cors({
@@ -53,6 +54,8 @@ app.get('/login-failure', (req, res) => {
   res.status(401).json({ ok: false, error: 'Autenticación con Google fallida' });
 });
 
+//camara RTSP
+app.use('/api/captura', capturaRouter);
 
 app.use('/api/users', userManagementRouter);
 app.use('/api/vehiculos', vehiculoRouter);

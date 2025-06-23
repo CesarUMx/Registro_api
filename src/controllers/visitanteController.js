@@ -11,13 +11,16 @@ const {
   // POST /api/visitantes crear visitante
   async function postVisitante(req, res) {
     try {
-      const { nombre, tipo, telefono, empresa } = req.body;
+      const { nombre, tipo, telefono, empresa, foto_persona_nombre } = req.body;
       const nombreNormalizado = normalizeName(nombre);
-      const foto_persona = req.files?.foto_persona?.[0]?.filename;
+      
+      // Obtener el nombre del archivo de la foto de persona, ya sea desde el campo foto_persona_nombre
+      // o desde el archivo subido
+      let foto_persona = foto_persona_nombre || req.files?.foto_persona?.[0]?.filename;
       const foto_ine = req.files?.foto_ine?.[0]?.filename;
-  
+
       checkRequiredFields(['nombre', 'tipo'], req.body);
-  
+
       if (tipo !== 'menor de edad') {
         if (!foto_persona || !foto_ine) {
           throw Object.assign(new Error('foto_persona y foto_ine son obligatorias para este tipo de visitante'), {
@@ -26,7 +29,7 @@ const {
           });
         }
       }
-  
+
       const visitante = await createVisitante({
         nombre: nombreNormalizado,
         tipo,

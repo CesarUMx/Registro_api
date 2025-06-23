@@ -11,8 +11,11 @@ const {
   
   async function postVehiculo(req, res) {
     try {
-      const { placa } = req.body;
-      const foto_placa = req.file?.filename || null;
+      const { placa, foto_placa_nombre } = req.body;
+      
+      // Obtener el nombre del archivo de la foto de placa, ya sea desde el campo foto_placa_nombre
+      // o desde el archivo subido
+      const foto_placa = foto_placa_nombre || req.file?.filename || null;
   
       checkRequiredFields(['placa'], req.body);
   
