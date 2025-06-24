@@ -1,10 +1,12 @@
 const { crearRegistroYConductor, agregarVisitantesEdificio,
   crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio,
   salidaCaseta, obtenerListadoRegistrosDataTable, obtenerDetalleRegistro,
-  asociarVehiculoARegistro
+  asociarVehiculoARegistro, nombreVisitante
 } = require('../models/registroModel');
 const { checkRequiredFields, handleError, validateGuardType, validarCampos,
 } = require('../utils/controllerHelpers');
+const { getUserById } = require('../models/userManagementModel');
+const { enviarAlertaVisita } = require('../services/emailService');
 
 async function postRegistroEntradaCaseta(req, res) {
   try {
@@ -67,6 +69,46 @@ async function patchEntradaEdificio(req, res) {
 
     const resultado = await agregarVisitantesEdificio(registroId, visitantes, req.user.userId, edificio, idPersonaVisitar, motivo);
 
+    // Enviar correo electrónico a la persona a visitar si existe
+    if (idPersonaVisitar) {
+      try {
+        // Obtener información de la persona a visitar
+        const personaAVisitar = await getUserById(idPersonaVisitar);
+
+        if (personaAVisitar && personaAVisitar.email) {
+          // Preparar la lista de nombres de visitantes
+          const nombresVisitantes = [];
+
+          if (visitantes && visitantes.length > 0) {
+            // Recorrer todos los visitantes y obtener sus nombres
+            for (const visitante of visitantes) {
+              nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
+            }
+          }
+
+          // Si no se encontraron nombres, añadir un mensaje genérico
+          if (nombresVisitantes.length === 0) {
+            nombresVisitantes.push('Visitante no especificado');
+          }
+
+          // Enviar correo electrónico de alerta con todos los visitantes
+          await enviarAlertaVisita(
+            personaAVisitar.email,
+            personaAVisitar.name,
+            nombresVisitantes,
+            edificio,
+            motivo,
+            resultado.code_registro || `Registro #${registroId}`
+          );
+
+          console.log(`Correo de alerta enviado a ${personaAVisitar.email} con ${nombresVisitantes.length} visitantes`);
+        }
+      } catch (emailError) {
+        // No interrumpimos el flujo principal si hay un error en el envío del correo
+        console.error('Error al enviar correo de alerta:', emailError);
+      }
+    }
+
     res.status(200).json({
       ok: true,
       ...resultado
@@ -92,6 +134,46 @@ async function postEntradaPeatonal(req, res) {
       idPersonaVisitar: idPersonaVisitar || null,
       idGuardiaEntrada: req.user.userId
     });
+
+    // Enviar correo electrónico a la persona a visitar si existe
+    if (idPersonaVisitar) {
+      try {
+        // Obtener información de la persona a visitar
+        const personaAVisitar = await getUserById(idPersonaVisitar);
+
+        if (personaAVisitar && personaAVisitar.email) {
+          // Preparar la lista de nombres de visitantes
+          const nombresVisitantes = [];
+
+          if (visitantes && visitantes.length > 0) {
+            // Recorrer todos los visitantes y obtener sus nombres
+            for (const visitante of visitantes) {
+              nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
+            }
+          }
+
+          // Si no se encontraron nombres, añadir un mensaje genérico
+          if (nombresVisitantes.length === 0) {
+            nombresVisitantes.push('Visitante no especificado');
+          }
+
+          // Enviar correo electrónico de alerta con todos los visitantes
+          await enviarAlertaVisita(
+            personaAVisitar.email,
+            personaAVisitar.name,
+            nombresVisitantes,
+            edificio,
+            motivo,
+            resultado.code_registro || `Registro #${registroId}`
+          );
+
+          console.log(`Correo de alerta enviado a ${personaAVisitar.email} con ${nombresVisitantes.length} visitantes`);
+        }
+      } catch (emailError) {
+        // No interrumpimos el flujo principal si hay un error en el envío del correo
+        console.error('Error al enviar correo de alerta:', emailError);
+      }
+    }
 
     res.status(201).json({
       ok: true,

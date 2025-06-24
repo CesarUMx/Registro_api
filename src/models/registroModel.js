@@ -608,6 +608,11 @@ async function asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante
     }
 }
 
+async function nombreVisitante(idVisitante) {
+    const res = await pool.query(`SELECT nombre FROM visitantes WHERE id = $1`, [idVisitante]);
+    return res.rows[0].nombre;
+}
+
 module.exports = {
     crearRegistroYConductor,
     agregarVisitantesEdificio,
@@ -617,5 +622,6 @@ module.exports = {
     salidaCaseta,
     obtenerListadoRegistrosDataTable,
     obtenerDetalleRegistro,
-    asociarVehiculoARegistro
+    asociarVehiculoARegistro,
+    nombreVisitante
 };
