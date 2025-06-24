@@ -281,7 +281,7 @@ async function buscarRegistroPorCodigo(code_registro) {
     };
 }
 
-async function salidaEdificio(registroId, cantidad, notas, userId) {
+async function salidaEdificio(registroId, cantidad, notas, userId, salida_vehiculo) {
     const { rows } = await pool.query(
         `SELECT id, id_vehiculo, n_visitantes, hora_entrada_edificio, hora_salida_edificio
        FROM registro
@@ -332,7 +332,7 @@ async function salidaEdificio(registroId, cantidad, notas, userId) {
 
     let estatus;
 
-    if (registro.id_vehiculo) {
+    if (registro.id_vehiculo || salida_vehiculo) {
         // Vehicular → sigue en tránsito
         estatus = 'transito';
     } else {
@@ -508,10 +508,10 @@ async function obtenerDetalleRegistro(id) {
       LEFT JOIN users u ON u.id = r.id_persona_a_visitar
       WHERE r.id = $1
     `, [id]);
-  
+
     const registro = result.rows[0];
     if (!registro) return null;
-  
+
     // 2. Visitantes
     const visitantesRes = await pool.query(`
       SELECT 
@@ -531,11 +531,11 @@ async function obtenerDetalleRegistro(id) {
       WHERE rv.registro_id = $1
       ORDER BY rv.codigo
     `, [id]);
-  
+
     // 3. Vehículo
     let vehiculo = null;
     if (registro.id_vehiculo) {
-      const vehiculoRes = await pool.query(`
+        const vehiculoRes = await pool.query(`
         SELECT 
           v.id,
           v.placa,
@@ -543,16 +543,70 @@ async function obtenerDetalleRegistro(id) {
         FROM vehiculos v
         WHERE v.id = $1
       `, [registro.id_vehiculo]);
-  
-      vehiculo = vehiculoRes.rows[0] || null;
+
+        vehiculo = vehiculoRes.rows[0] || null;
     }
-  
+
     return {
-      registro,
-      visitantes: visitantesRes.rows,
-      vehiculo
+        registro,
+        visitantes: visitantesRes.rows,
+        vehiculo
     };
-  }
+}
+
+async function asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const { rows } = await client.query(`
+        SELECT id, estatus, n_visitantes, code_registro
+        FROM registro
+        WHERE code_registro = $1
+        FOR UPDATE
+      `, [code_registro]);
+
+        if (rows.length === 0) {
+            throw new Error('Registro no encontrado');
+        }
+
+        const registro = rows[0];
+
+        if (registro.estatus !== 'en edificio' && registro.estatus !== 'transito') {
+            throw new Error('Solo se puede asociar un vehículo a un registro que esté en edificio');
+        }
+
+        const codigoConductor = generateDriverTag(registro.code_registro);
+
+        // Insertar visitante (conductor)
+        await client.query(`
+        INSERT INTO registro_visitantes (
+          registro_id, id_visitante, codigo, tag_type
+        ) VALUES ($1, $2, $3, 'etiqueta')
+      `, [registro.id, id_visitante, codigoConductor]);
+
+        // Aumentar n_visitantes
+        const nuevoTotal = registro.n_visitantes + 1;
+
+        await client.query(`
+            UPDATE registro
+            SET id_vehiculo = $1,
+                estatus = 'transito',
+                hora_entrada_caseta = NOW(),
+                n_visitantes = $2
+            WHERE id = $3
+          `, [id_vehiculo, nuevoTotal, registro.id]);
+
+        await client.query('COMMIT');
+
+        return { message: 'Vehículo y conductor asociados correctamente' };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
 
 module.exports = {
     crearRegistroYConductor,
@@ -562,5 +616,6 @@ module.exports = {
     salidaEdificio,
     salidaCaseta,
     obtenerListadoRegistrosDataTable,
-    obtenerDetalleRegistro
+    obtenerDetalleRegistro,
+    asociarVehiculoARegistro
 };

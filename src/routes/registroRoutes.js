@@ -3,7 +3,7 @@ const router = express.Router();
 const { verifyJWT } = require('../middlewares/auth');
 const { postRegistroEntradaCaseta, patchEntradaEdificio, postEntradaPeatonal,
     getRegistroPorCodigo, patchSalidaEdificio, patchSalidaCaseta, 
-    getRegistrosListado, getRegistroDetalle 
+    getRegistrosListado, getRegistroDetalle, patchAsociarVehiculo
 } = require('../controllers/registroController');
 
 // Proteger con JWT
@@ -32,5 +32,7 @@ router.post('/', getRegistrosListado);
 
 // Detalle de un registro
 router.get('/:id', getRegistroDetalle);
+
+router.patch('/asociar-vehiculo', patchAsociarVehiculo);
 
 module.exports = router;

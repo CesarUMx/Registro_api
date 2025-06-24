@@ -1,6 +1,7 @@
 const { crearRegistroYConductor, agregarVisitantesEdificio,
   crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio,
-  salidaCaseta, obtenerListadoRegistrosDataTable, obtenerDetalleRegistro
+  salidaCaseta, obtenerListadoRegistrosDataTable, obtenerDetalleRegistro,
+  asociarVehiculoARegistro
 } = require('../models/registroModel');
 const { checkRequiredFields, handleError, validateGuardType, validarCampos,
 } = require('../utils/controllerHelpers');
@@ -126,7 +127,7 @@ async function patchSalidaEdificio(req, res) {
     validateGuardType(req.user, ['entrada']);
 
     const registroId = parseInt(req.params.id);
-    const { cantidad, notas } = req.body;
+    const { cantidad, notas, salida_vehiculo } = req.body;
 
     if (!cantidad || isNaN(cantidad)) {
       const error = new Error('Se requiere el número de personas que entregaron etiqueta/tarjeta');
@@ -135,7 +136,7 @@ async function patchSalidaEdificio(req, res) {
       throw error;
     }
 
-    const resultado = await salidaEdificio(registroId, cantidad, notas, req.user.userId);
+    const resultado = await salidaEdificio(registroId, cantidad, notas, req.user.userId, salida_vehiculo);
 
     res.status(200).json({
       ok: true,
@@ -234,6 +235,27 @@ async function getRegistroDetalle(req, res) {
   }
 }
 
+async function patchAsociarVehiculo(req, res) {
+  try {
+    const { code_registro, id_vehiculo, id_visitante } = req.body;
+
+    if (!code_registro || !id_vehiculo || !id_visitante) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Faltan datos necesarios para vincular vehículo'
+      });
+    }
+
+    const resultado = await asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante);
+
+    res.status(200).json({ ok: true, ...resultado });
+
+  } catch (error) {
+    console.error('Error en patchAsociarVehiculo:', error);
+    handleError(res, error);
+  }
+}
+
 
 module.exports = {
   postRegistroEntradaCaseta,
@@ -243,5 +265,6 @@ module.exports = {
   patchSalidaEdificio,
   patchSalidaCaseta,
   getRegistrosListado,
-  getRegistroDetalle
+  getRegistroDetalle,
+  patchAsociarVehiculo
 };
