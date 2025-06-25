@@ -556,6 +556,7 @@ async function obtenerDetalleRegistro(id) {
 
 async function asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante) {
     const client = await pool.connect();
+    let status = 'transito';
     try {
         await client.query('BEGIN');
 
@@ -576,6 +577,10 @@ async function asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante
             throw new Error('Solo se puede asociar un vehículo a un registro que esté en edificio');
         }
 
+        if (registro.estatus === 'en edificio') {
+            status = 'uber en espera';
+        }
+
         const codigoConductor = generateDriverTag(registro.code_registro);
 
         // Insertar visitante (conductor)
@@ -591,11 +596,11 @@ async function asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante
         await client.query(`
             UPDATE registro
             SET id_vehiculo = $1,
-                estatus = 'transito',
+                estatus = $4,
                 hora_entrada_caseta = NOW(),
                 n_visitantes = $2
             WHERE id = $3
-          `, [id_vehiculo, nuevoTotal, registro.id]);
+          `, [id_vehiculo, nuevoTotal, registro.id, status]);
 
         await client.query('COMMIT');
 
