@@ -3,10 +3,14 @@ const router = express.Router();
 const { verifyJWT } = require('../middlewares/auth');
 const { postRegistroEntradaCaseta, patchEntradaEdificio, postEntradaPeatonal,
     getRegistroPorCodigo, patchSalidaEdificio, patchSalidaCaseta, 
-    getRegistrosListado, getRegistroDetalle, patchAsociarVehiculo
+    getRegistrosListado, getRegistroDetalle, patchAsociarVehiculo,
+    getRegistroPublico
 } = require('../controllers/registroController');
 
-// Proteger con JWT
+// Ruta pública para obtener detalles de un registro por código (sin autenticación)
+router.get('/publico/:codigo', getRegistroPublico);
+
+// Proteger el resto de rutas con JWT
 router.use(verifyJWT);
 
 // Entrada por caseta (registro inicial vehicular)

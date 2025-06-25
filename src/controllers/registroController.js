@@ -339,6 +339,37 @@ async function patchAsociarVehiculo(req, res) {
 }
 
 
+// Función para obtener detalles de un registro públicamente por código
+async function getRegistroPublico(req, res) {
+  try {
+    const codigo = req.params.codigo;
+    if (!codigo) {
+      return res.status(400).json({ ok: false, error: 'Código inválido' });
+    }
+
+    // Buscar el registro por código
+    const registro = await buscarRegistroPorCodigo(codigo);
+    if (!registro) {
+      return res.status(404).json({ ok: false, error: 'Registro no encontrado' });
+    }
+
+    // Si el registro existe, obtener los detalles completos
+    const resultado = await obtenerDetalleRegistro(registro.id);
+    if (!resultado) {
+      return res.status(404).json({ ok: false, error: 'Detalles del registro no encontrados' });
+    }
+
+    // Devolver solo la información necesaria para la vista pública
+    res.status(200).json({
+      ok: true,
+      data: resultado
+    });
+  } catch (error) {
+    console.error('Error en getRegistroPublico:', error);
+    res.status(500).json({ ok: false, error: 'Error interno del servidor' });
+  }
+}
+
 module.exports = {
   postRegistroEntradaCaseta,
   patchEntradaEdificio,
@@ -348,5 +379,6 @@ module.exports = {
   patchSalidaCaseta,
   getRegistrosListado,
   getRegistroDetalle,
-  patchAsociarVehiculo
+  patchAsociarVehiculo,
+  getRegistroPublico
 };
