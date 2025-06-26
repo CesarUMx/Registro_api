@@ -3,6 +3,47 @@ const bcrypt = require('bcrypt');
 const pool = require('../config/db');
 const { findByUsername, saveToken, revokeToken } = require('../models/userModel');
 
+// Función para generar un nuevo token JWT
+async function generateToken(user, revokeOldToken = false) {
+  // Crear el payload del token
+  const tokenPayload = { userId: user.id, role: user.role };
+  
+  // Incluir el tipo de guardia en el token si existe
+  if (user.guard_type) {
+    tokenPayload.guard_type = user.guard_type;
+  }
+  
+  // Si se solicita revocar el token anterior, hacerlo
+  if (revokeOldToken) {
+    try {
+      // Buscar y revocar todos los tokens activos del usuario
+      const { rows } = await pool.query(
+        'SELECT token FROM tokens WHERE user_id = $1 AND revoked = false',
+        [user.id]
+      );
+      
+      // Revocar cada token encontrado
+      for (const row of rows) {
+        await revokeToken(row.token);
+      }
+    } catch (error) {
+      console.error('Error al revocar tokens anteriores:', error);
+      // Continuamos con la generación del nuevo token incluso si hay error
+    }
+  }
+  
+  const token = jwt.sign(
+    tokenPayload,
+    process.env.JWT_SECRET,
+    { expiresIn: '8h' }
+  );
+  
+  // Almacenar en tabla tokens
+  await saveToken(user.id, token);
+  
+  return token;
+}
+
 async function login(req, res, next) {
   try {
     const { username, password } = req.body;
@@ -28,24 +69,8 @@ async function login(req, res, next) {
       return res.status(401).json({ ok:false, err:'Credenciales inválidas' });
     }
     
-    // Crear el payload del token
-    const tokenPayload = { userId: user.id, role: user.role };
-    
-    // Incluir el tipo de guardia en el token si existe
-    if (user.guard_type) {
-      tokenPayload.guard_type = user.guard_type;
-    } else {
-      console.error('Usuario sin tipo de guardia especificado');
-    }
-    
-    const token = jwt.sign(
-      tokenPayload,
-      process.env.JWT_SECRET,
-      { expiresIn: '8h' }
-    );
-    
-    // Almacenar en tabla tokens
-    await saveToken(user.id, token);
+    // Generar token JWT
+    const token = await generateToken(user);
     
     // Incluir información adicional del usuario en la respuesta
     res.json({ 
@@ -99,4 +124,4 @@ async function logout(req, res, next) {
   }
 }
 
-module.exports = { login, logout };
+module.exports = { login, logout, generateToken };

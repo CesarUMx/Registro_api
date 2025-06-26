@@ -1,6 +1,8 @@
 // src/controllers/userManagementController.js
 const bcrypt = require('bcrypt');
 const userModel = require('../models/userManagementModel');
+const { generateToken } = require('./authController');
+const pool = require('../config/db');
 
 // Obtener todos los usuarios
 async function getAllUsers(req, res, next) {
@@ -207,35 +209,74 @@ async function getAdminUsers(req, res, next) {
   }
 }
 
-// Actualizar solo el tipo de guardia (para supervisores)
+// Actualizar solo el tipo de guardia (para supervisores o para guardias actualizando su propio tipo)
 async function updateGuardType(req, res, next) {
   try {
-    const { id } = req.params;
-    const { guardType } = req.body;
+    // Obtener el ID del usuario a actualizar
+    // Si hay un ID en los parámetros (ruta de supervisor), usar ese
+    // Si no, usar el ID del usuario autenticado (guardia actualizando su propio tipo)
+    const userId = req.params.id || req.user.userId;
+    
+    // Aceptar tanto guardType como guard_type para mayor compatibilidad
+    const guardType = req.body.guardType || req.body.guard_type;
     
     if (!guardType) {
-      return res.status(400).json({ ok: false, err: 'Tipo de guardia no proporcionado' });
+      return res.status(400).json({ ok: false, error: 'Tipo de guardia no proporcionado' });
     }
     
     // Verificar que el usuario a actualizar exista y sea guardia
-    const user = await userModel.getUserById(id);
+    const user = await userModel.getUserById(userId);
     
     if (!user) {
-      return res.status(404).json({ ok: false, err: 'Usuario no encontrado' });
+      return res.status(404).json({ ok: false, error: 'Usuario no encontrado' });
     }
     
     if (user.role !== 'guardia') {
       return res.status(403).json({ 
         ok: false, 
-        err: 'Solo puedes modificar el tipo de guardia para usuarios con rol de guardia' 
+        error: 'Solo puedes modificar el tipo de guardia para usuarios con rol de guardia' 
+      });
+    }
+    
+    // Verificar que el tipo de guardia sea válido
+    const validTypes = ['caseta', 'entrada', 'supervisor'];
+    if (!validTypes.includes(guardType)) {
+      return res.status(400).json({
+        ok: false,
+        error: `Tipo de guardia inválido. Debe ser uno de: ${validTypes.join(', ')}`
       });
     }
     
     // Actualizar el tipo de guardia
-    const updatedUser = await userModel.updateGuardType(id, guardType);
-    res.json({ ok: true, user: updatedUser });
+    const updatedUser = await userModel.updateGuardType(userId, guardType);
+    
+    // Obtener el usuario completo para generar un nuevo token
+    const { rows } = await pool.query(
+      `SELECT u.id, u.username, u.name, r.name AS role, u.guard_type
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       WHERE u.id = $1`, 
+      [userId]
+    );
+    
+    const userFull = rows[0];
+    
+    if (!userFull) {
+      return res.status(404).json({ ok: false, error: 'No se pudo obtener la información completa del usuario' });
+    }
+    
+    // Generar un nuevo token con el tipo de guardia actualizado y revocar el anterior
+    const newToken = await generateToken(userFull, true); // El segundo parámetro true indica que se deben revocar los tokens anteriores
+    
+    // Devolver el usuario actualizado y el nuevo token
+    res.json({ 
+      ok: true, 
+      user: updatedUser,
+      token: newToken
+    });
   } catch (err) {
-    console.error(`Error al actualizar tipo de guardia para usuario ${req.params.id}:`, err);
+    const userId = req.params.id || (req.user ? req.user.userId : 'desconocido');
+    console.error(`Error al actualizar tipo de guardia para usuario ${userId}:`, err);
     next(err);
   }
 }
