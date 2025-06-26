@@ -7,7 +7,7 @@ const {
 } = require('../utils/codeGenerator');
 const { validateTarjetaDisponible } = require('../utils/modelsHelpers');
 
-async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoVisitanteConductor, nVisitantes, idGuardiaCaseta, tagType, nTarjeta = null, idPreregistro = null }) {
+async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoVisitanteConductor, nVisitantes, idGuardiaCaseta, tagType, nTarjeta = null, idPreregistro = null, numMarbete }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -27,10 +27,11 @@ async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoV
          hora_entrada_caseta,
          n_visitantes,
          estatus,
-         tipo_r
-       ) VALUES ($1, $2, $3, NOW(), $4, 'en caseta', $5)
+         tipo_r,
+         num_marbete
+       ) VALUES ($1, $2, $3, NOW(), $4, 'en caseta', $5, $6)
        RETURNING id`,
-            [idPreregistro, idVehiculo, idGuardiaCaseta, nVisitantes, tipo_r]
+            [idPreregistro, idVehiculo, idGuardiaCaseta, nVisitantes, tipo_r, numMarbete]
         );
 
         const registroId = resultRegistro.rows[0].id;
@@ -503,6 +504,7 @@ async function obtenerDetalleRegistro(id) {
         r.id_guardia_edificio,
         r.id_guardia_caseta_salida,
         r.id_guardia_edificio_salida,
+        r.num_marbete,
         u.name AS persona_a_visitar
       FROM registro r
       LEFT JOIN users u ON u.id = r.id_persona_a_visitar

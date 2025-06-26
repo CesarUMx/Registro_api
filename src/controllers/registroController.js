@@ -20,11 +20,12 @@ async function postRegistroEntradaCaseta(req, res) {
       n_visitantes,
       tag_type,
       n_tarjeta,
-      id_preregistro
+      id_preregistro,
+      num_marbete
     } = req.body;
 
     // Validaciones obligatorias
-    checkRequiredFields(['id_visitante_conductor', 'tipo_conductor', 'n_visitantes', 'tag_type'], req.body);
+    checkRequiredFields(['id_visitante_conductor', 'tipo_conductor', 'n_visitantes', 'tag_type', 'num_marbete'], req.body);
 
     // Si tag_type es "tarjeta", n_tarjeta es obligatorio
     if (tag_type === 'tarjeta' && !n_tarjeta) {
@@ -42,7 +43,8 @@ async function postRegistroEntradaCaseta(req, res) {
       idGuardiaCaseta: req.user.userId,
       tagType: tag_type,
       nTarjeta: n_tarjeta || null,
-      idPreregistro: id_preregistro || null
+      idPreregistro: id_preregistro || null,
+      numMarbete: num_marbete
     });
 
     res.status(201).json({
