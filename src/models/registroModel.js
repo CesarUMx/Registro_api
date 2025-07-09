@@ -1,468 +1,602 @@
 const pool = require('../config/db');
 const {
-    generateRegistrationCode,
-    generateDriverTag,
-    generateSpecialTag,
-    generateVisitorTag
+  generateRegistrationCode,
+  generateDriverTag,
+  generateSpecialTag,
+  generateVisitorTag
 } = require('../utils/codeGenerator');
-const { validateTarjetaDisponible } = require('../utils/modelsHelpers');
+const { validateTarjetaDisponible, actualizarSalida } = require('../utils/modelsHelpers');
 
-async function crearRegistroYConductor({ idVehiculo, idVisitanteConductor, tipoVisitanteConductor, nVisitantes, idGuardiaCaseta, tagType, nTarjeta = null, idPreregistro = null, numMarbete }) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+async function crearRegistroYConductor({
+  vehiculo_id,
+  idVisitanteConductor,
+  tipoVisitanteConductor,
+  nVisitantes,
+  idGuardiaCaseta,
+  tagType,
+  nTarjeta,
+  idPreregistro,
+  numMarbete,
+  motivo
+}) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-        let tipo_r = 'completo';
+    // Determinar tipo de registro
+    let tipo_r = 'completo';
+    if (['proveedor', 'taxi o uber'].includes(tipoVisitanteConductor)) {
+      tipo_r = 'proveedor';
+    }
 
-        if (tipoVisitanteConductor === 'proveedor' || tipoVisitanteConductor === 'taxi o uber') {
-            tipo_r = 'proveedor';
-        }
-
-        // 1. Insertar el registro (sin code_registro aún)
-        const resultRegistro = await client.query(
-            `INSERT INTO registro (
+    // Insertar registro principal
+    const result = await client.query(
+      `INSERT INTO registro (
          id_preregistro,
-         id_vehiculo,
          id_guardia_caseta,
          hora_entrada_caseta,
          n_visitantes,
          estatus,
          tipo_r,
-         num_marbete
-       ) VALUES ($1, $2, $3, NOW(), $4, 'en caseta', $5, $6)
+         num_marbete,
+         motivo
+       ) VALUES ($1, $2, NOW(), $3, 'iniciado', $4, $5, $6)
        RETURNING id`,
-            [idPreregistro, idVehiculo, idGuardiaCaseta, nVisitantes, tipo_r, numMarbete]
-        );
+      [idPreregistro, idGuardiaCaseta, nVisitantes, tipo_r, numMarbete, motivo]
+    );
 
-        const registroId = resultRegistro.rows[0].id;
+    const registroId = result.rows[0].id;
+    const codeRegistro = generateRegistrationCode(registroId);
 
-        // 2. Generar y actualizar code_registro
-        const codeRegistro = generateRegistrationCode(registroId);
-        await client.query(
-            `UPDATE registro SET code_registro = $1 WHERE id = $2`,
-            [codeRegistro, registroId]
-        );
+    await client.query(
+      `UPDATE registro SET code_registro = $1 WHERE id = $2`,
+      [codeRegistro, registroId]
+    );
 
-        // 3. Insertar conductor en registro_visitantes
-        const codigoConductor = (['proveedor', 'taxi o uber'].includes(tipoVisitanteConductor))
-            ? generateSpecialTag(codeRegistro, 'PROV')
-            : generateDriverTag(codeRegistro);
-        await client.query(
-            `INSERT INTO registro_visitantes (
+    // Insertar conductor
+    const codigoConductor = (['proveedor', 'taxi o uber'].includes(tipoVisitanteConductor))
+      ? generateSpecialTag(codeRegistro, 'PROV')
+      : generateDriverTag(codeRegistro);
+
+    await client.query(
+      `INSERT INTO registro_visitantes (
          registro_id,
          id_visitante,
          codigo,
          tag_type,
-         n_tarjeta
-       ) VALUES ($1, $2, $3, $4, $5)`,
-            [registroId, idVisitanteConductor, codigoConductor, tagType, nTarjeta]
-        );
+         n_tarjeta,
+         estatus,
+         hora_entrada_caseta
+       ) VALUES ($1, $2, $3, $4, $5, 'en caseta', NOW())`,
+      [registroId, idVisitanteConductor, codigoConductor, tagType, nTarjeta]
+    );
 
-        await client.query('COMMIT');
-
-        return {
-            registro_id: registroId,
-            code_registro: codeRegistro,
-            codigo_conductor: codigoConductor
-        };
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
+    // Si se recibió un vehículo, lo asociamos
+    if (vehiculo_id) {
+      await client.query(
+        `INSERT INTO registro_vehiculos (
+           registro_id,
+           vehiculo_id,
+           hora_entrada
+         ) VALUES ($1, $2, NOW())`,
+        [registroId, vehiculo_id]
+      );
     }
+
+    await client.query('COMMIT');
+    return {
+      registro_id: registroId,
+      code_registro: codeRegistro,
+      codigo_conductor: codigoConductor
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrada, edificio, idPersonaVisitar = null, motivo = null) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-        // 1. Obtener registro base
-        const { rows } = await client.query(
-            `SELECT * FROM registro WHERE id = $1`,
-            [registroId]
-        );
-
-        if (rows.length === 0) {
-            throw Object.assign(new Error('Registro no encontrado'), { status: 404 });
-        }
-
-        const registro = rows[0];
-
-        if (registro.estatus !== 'en caseta') {
-            throw Object.assign(new Error('El registro no está en estado válido para entrada a edificio'), {
-                status: 400,
-                code: 'INVALID_STATUS'
-            });
-        }
-
-        // 2. Verificar que no excedan n_visitantes
-        const { rows: actuales } = await client.query(
-            `SELECT COUNT(*)::int as total FROM registro_visitantes WHERE registro_id = $1`,
-            [registroId]
-        );
-
-        const totalActual = actuales[0].total;
-        console.log('Total actual:', totalActual);
-
-        // Buscar id del conductor ya registrado
-        const conductorRes = await client.query(
-            `SELECT id_visitante FROM registro_visitantes
-   WHERE registro_id = $1 AND codigo LIKE '%-CND'`,
-            [registroId]
-        );
-
-        const idConductor = conductorRes.rows[0]?.id_visitante;
-
-        // Verificar si en esta entrada también se está usando al conductor
-        let nuevos = 0;
-        for (const v of visitantes) {
-            // Solo cuenta si NO es el conductor
-            if (v.id_visitante !== idConductor) {
-                nuevos++;
-            }
-        }
-        console.log('Nuevos:', nuevos);
-
-        const totalPrevisto = totalActual + nuevos;
-        console.log('Total previsto:', totalPrevisto);
-
-        if (totalPrevisto > registro.n_visitantes) {
-            throw Object.assign(new Error(`Se excede el número de personas que pueden ingresar al edificio. Ya hay ${totalActual} y se intentan agregar ${nuevos}, el conductor ya se cuenta`), {
-                status: 400,
-                code: 'LIMIT_EXCEEDED'
-            });
-        }
-
-        let codigos = [];
-
-        // 3. Insertar visitantes
-        for (let i = 0; i < visitantes.length; i++) {
-            const v = visitantes[i];
-            if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
-                await validateTarjetaDisponible(v.n_tarjeta, client);
-            }
-            const codigo = generateVisitorTag(registro.code_registro, totalPrevisto + i + 1);
-            codigos.push({ id_visitante: v.id_visitante, codigo });
-
-            await client.query(
-                `INSERT INTO registro_visitantes (
-             registro_id, id_visitante, codigo, tag_type, n_tarjeta
-           ) VALUES ($1, $2, $3, $4, $5)`,
-                [registroId, v.id_visitante, codigo, v.tag_type, v.n_tarjeta || null]
-            );
-        }
-
-        console.log('persona a visitar:', idPersonaVisitar);
-
-        // 4. Actualizar hora y guardia
-        await client.query(
-            `UPDATE registro
-         SET hora_entrada_edificio = NOW(),
-             id_guardia_edificio = $1,
-             edificio = $2,
-             id_persona_a_visitar = $3,
-             motivo = $4,
-             estatus = 'en edificio'
-         WHERE id = $5`,
-            [idGuardiaEntrada, edificio, idPersonaVisitar, motivo, registroId]
-        );
-
-        await client.query('COMMIT');
-        return { ok: true, message: 'Visitantes registrados en edificio', codigos };
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
-}
-
-async function crearRegistroPeatonal({ visitantes, edificio, motivo, idPersonaVisitar = null, idGuardiaEntrada }) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        // 1. Crear registro
-        const result = await client.query(
-            `INSERT INTO registro (
-           hora_entrada_edificio,
-           id_guardia_edificio,
-           edificio,
-           motivo,
-           id_persona_a_visitar,
-           estatus,
-           n_visitantes,
-           tipo_r
-         ) VALUES (
-           NOW(), $1, $2, $3, $4, 'en edificio', $5, 'peatonal'
-         ) RETURNING id`,
-            [idGuardiaEntrada, edificio, motivo, idPersonaVisitar, visitantes.length]
-        );
-
-        const registroId = result.rows[0].id;
-
-        // 2. Generar code_registro y actualizar
-        const codeRegistro = generateRegistrationCode(registroId);
-        await client.query(
-            `UPDATE registro SET code_registro = $1 WHERE id = $2`,
-            [codeRegistro, registroId]
-        );
-
-        // 3. Insertar visitantes
-        const codigos = [];
-
-        for (let i = 0; i < visitantes.length; i++) {
-            const v = visitantes[i];
-            if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
-                await validateTarjetaDisponible(v.n_tarjeta, client);
-            }
-            const codigo = generateSpecialTag(codeRegistro, `P${String(i + 1).padStart(2, '0')}`);
-            codigos.push({ id_visitante: v.id_visitante, codigo });
-
-            await client.query(
-                `INSERT INTO registro_visitantes (
-             registro_id, id_visitante, codigo, tag_type, n_tarjeta
-           ) VALUES ($1, $2, $3, $4, $5)`,
-                [registroId, v.id_visitante, codigo, v.tag_type, v.n_tarjeta || null]
-            );
-        }
-
-        await client.query('COMMIT');
-
-        return {
-            registro_id: registroId,
-            code_registro: codeRegistro,
-            codigos
-        };
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
-    }
-}
-
-async function buscarRegistroPorCodigo(code_registro) {
-    const { rows } = await pool.query(
-        `SELECT * FROM registro WHERE code_registro = $1`,
-        [code_registro]
-    );
-
+    const { rows } = await client.query(`SELECT * FROM registro WHERE id = $1`, [registroId]);
     if (rows.length === 0) {
-        const error = new Error('Registro no encontrado');
-        error.status = 404;
-        error.code = 'REGISTRO_NO_ENCONTRADO';
-        throw error;
+      throw Object.assign(new Error('Registro no encontrado'), { status: 404 });
     }
 
     const registro = rows[0];
 
-    // Consultar visitantes excluyendo al conductor
-    const { rows: visitantes } = await pool.query(
-        `SELECT rv.id, rv.id_visitante, rv.codigo, v.nombre
+    // ⚠️ Ya NO validamos estatus global del registro
+    // Solo verificamos número de visitantes que ya ingresaron
+    const { rows: actuales } = await client.query(
+      `SELECT COUNT(*)::int as total FROM registro_visitantes WHERE registro_id = $1 AND hora_entrada_edificio IS NOT NULL`,
+      [registroId]
+    );
+    const totalActual = actuales[0].total;
+
+    const conductorRes = await client.query(
+      `SELECT id_visitante FROM registro_visitantes
+         WHERE registro_id = $1 AND codigo LIKE '%-CND'`,
+      [registroId]
+    );
+    const idConductor = conductorRes.rows[0]?.id_visitante;
+
+    const totalPrevisto = totalActual + visitantes.length;
+
+    if (totalPrevisto > registro.n_visitantes) {
+      throw Object.assign(new Error(`Se excede el número de personas que pueden ingresar al edificio. Ya hay ${totalActual} y se intentan agregar ${nuevos}, el conductor ya se cuenta`), {
+        status: 400,
+        code: 'LIMIT_EXCEEDED'
+      });
+    }
+
+    let codigos = [];
+
+    for (let i = 0; i < visitantes.length; i++) {
+      const v = visitantes[i];
+
+      if (v.id_visitante === idConductor) {
+        await client.query(
+          `UPDATE registro_visitantes
+             SET hora_entrada_edificio = NOW(), estatus = 'en edificio'
+             WHERE registro_id = $1 AND id_visitante = $2`,
+          [registroId, idConductor]
+        );
+        continue;
+      }
+
+      if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
+        await validateTarjetaDisponible(v.n_tarjeta, client);
+      }
+
+      const codigo = generateVisitorTag(registro.code_registro, i + 1);
+      codigos.push({ id_visitante: v.id_visitante, codigo });
+
+      await client.query(
+        `INSERT INTO registro_visitantes (
+            registro_id, id_visitante, codigo, tag_type, n_tarjeta,
+            estatus, hora_entrada_edificio
+          ) VALUES ($1, $2, $3, $4, $5, 'en edificio', NOW())`,
+        [registroId, v.id_visitante, codigo, v.tag_type, v.n_tarjeta || null]
+      );
+    }
+
+    // ✅ Solo se actualizan datos administrativos, no hora ni estatus
+    await client.query(
+      `UPDATE registro
+         SET edificio = $1,
+             id_persona_a_visitar = $2,
+             motivo = $3,
+             id_guardia_edificio = $4,
+             hora_entrada_edificio = NOW()
+         WHERE id = $5`,
+      [edificio, idPersonaVisitar, motivo, idGuardiaEntrada, registroId]
+    );
+
+    await client.query('COMMIT');
+    return { ok: true, message: 'Visitantes registrados en edificio', codigos, code_registro: registro.code_registro };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function crearRegistroPeatonal({ visitantes, edificio, motivo, idPersonaVisitar = null, idGuardiaEntrada }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Crear registro principal con estatus 'iniciado'
+    const result = await client.query(
+      `INSERT INTO registro (
+         hora_entrada_edificio,
+         id_guardia_edificio,
+         edificio,
+         motivo,
+         id_persona_a_visitar,
+         estatus,
+         n_visitantes,
+         tipo_r
+       ) VALUES (
+         NOW(), $1, $2, $3, $4, 'iniciado', $5, 'peatonal'
+       )
+       RETURNING id`,
+      [idGuardiaEntrada, edificio, motivo, idPersonaVisitar, visitantes.length]
+    );
+
+    const registroId = result.rows[0].id;
+
+    // 2. Generar code_registro
+    const codeRegistro = generateRegistrationCode(registroId);
+    await client.query(
+      `UPDATE registro SET code_registro = $1 WHERE id = $2`,
+      [codeRegistro, registroId]
+    );
+
+    // 3. Insertar cada visitante con hora_entrada_edificio
+    const codigos = [];
+
+    for (let i = 0; i < visitantes.length; i++) {
+      const v = visitantes[i];
+
+      if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
+        await validateTarjetaDisponible(v.n_tarjeta, client);
+      }
+
+      const codigo = generateSpecialTag(codeRegistro, `P${String(i + 1).padStart(2, '0')}`);
+      codigos.push({ id_visitante: v.id_visitante, codigo });
+
+      await client.query(
+        `INSERT INTO registro_visitantes (
+           registro_id,
+           id_visitante,
+           codigo,
+           tag_type,
+           n_tarjeta,
+           estatus,
+           hora_entrada_edificio
+         ) VALUES ($1, $2, $3, $4, $5, 'en edificio', NOW())`,
+        [registroId, v.id_visitante, codigo, v.tag_type, v.n_tarjeta || null]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    return {
+      registro_id: registroId,
+      code_registro: codeRegistro,
+      codigos
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function buscarRegistroPorCodigo(code_registro) {
+  const { rows } = await pool.query(
+    `SELECT * FROM registro WHERE code_registro = $1`,
+    [code_registro]
+  );
+
+  if (rows.length === 0) {
+    const error = new Error('Registro no encontrado');
+    error.status = 404;
+    error.code = 'REGISTRO_NO_ENCONTRADO';
+    throw error;
+  }
+
+  const registro = rows[0];
+
+  // Consultar visitantes excluyendo al conductor
+  const { rows: visitantes } = await pool.query(
+    `SELECT rv.id, rv.id_visitante, rv.codigo, v.nombre
        FROM registro_visitantes rv
        JOIN visitantes v ON v.id = rv.id_visitante
        WHERE rv.registro_id = $1
          AND rv.codigo ~ '-[VP][0-9]{2}$'`,
-        [registro.id]
-    );
+    [registro.id]
+  );
 
-    const tipo = registro.id_vehiculo ? 'vehicular' : 'peatonal';
+  const tipo = registro.id_vehiculo ? 'vehicular' : 'peatonal';
+
+  return {
+    id: registro.id,
+    code_registro: registro.code_registro,
+    estatus: registro.estatus,
+    tipo,
+    n_visitantes: registro.n_visitantes,
+    hora_entrada_edificio: registro.hora_entrada_edificio,
+    visitantes
+  };
+}
+
+async function salidaEdificio(registroId, visitantes, notas, userId, salida_vehiculo = false, completo = false) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const resRegistro = await client.query(`
+      SELECT id, tipo_r, estatus
+      FROM registro
+      WHERE id = $1
+    `, [registroId]);
+
+    if (resRegistro.rows.length === 0) {
+      throw Object.assign(new Error('Registro no encontrado'), {
+        status: 404,
+        code: 'REGISTRO_NO_ENCONTRADO'
+      });
+    }
+
+    const registro = resRegistro.rows[0];
+
+    if (registro.estatus === 'completo') {
+      throw Object.assign(new Error('El registro ya fue finalizado'), {
+        status: 400,
+        code: 'YA_COMPLETADO'
+      });
+    }
+
+    for (const v of visitantes) {
+      const visitanteId = v.id_visitante;
+
+      const status_actual = await client.query(`
+        SELECT estatus
+        FROM registro_visitantes
+        WHERE registro_id = $1 AND id_visitante = $2
+      `, [registroId, visitanteId]);
+
+      if (status_actual.rows.length === 0) {
+        throw Object.assign(new Error('Visitante no encontrado'), {
+          status: 404,
+          code: 'VISITANTE_NO_ENCONTRADO'
+        });
+      }
+
+      const status = status_actual.rows[0].estatus;
+
+      if (status !== 'en edificio') {
+        throw Object.assign(new Error('El visitante ya salió del edificio'), {
+          status: 400,
+          code: 'YA_SALIO'
+        });
+      }
+
+      const nuevoEstatus = salida_vehiculo
+        ? 'uber en espera'
+        : 'salió del edificio';
+
+      // 1️⃣ Marcar salida del edificio
+      await actualizarVisitanteEvento({
+        registroId: registroId,
+        visitanteId: visitanteId,
+        evento: 'salida_edificio',
+        estatus: nuevoEstatus
+      });
+
+      // 2️⃣ Si no espera vehículo, ya terminó su proceso → marcar como completo
+      if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completo) {
+        await client.query(`
+          UPDATE registro_visitantes
+          SET estatus = 'completo'
+          WHERE registro_id = $1 AND id_visitante = $2
+        `, [registroId, visitanteId]);
+      }
+    }
+
+    // 3️⃣ Agregar nota al registro
+    if (notas && notas.trim() !== '') {
+      await client.query(`
+        UPDATE registro
+        SET notas = CONCAT(COALESCE(notas, ''), ' | Notas edificio: ', $1::text),
+            id_guardia_edificio_salida = $2
+        WHERE id = $3
+      `, [notas, userId, registroId]);
+    }
+
+    // 4️⃣ Intentar cerrar el registro si ya salieron todos del edificio y NO esperan vehículo
+    let cerrado = false;
+    if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completo) {
+      cerrado = await actualizarSalida(visitantes.length, registroId, client);
+    }
+
+    await client.query('COMMIT');
 
     return {
-        id: registro.id,
-        code_registro: registro.code_registro,
-        estatus: registro.estatus,
-        tipo,
-        n_visitantes: registro.n_visitantes,
-        hora_entrada_edificio: registro.hora_entrada_edificio,
-        visitantes
+      ok: true,
+      message: cerrado
+        ? 'Registro finalizado correctamente'
+        : `Salida registrada para ${visitantes.length} visitante(s)`
     };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
-async function salidaEdificio(registroId, cantidad, notas, userId, salida_vehiculo) {
-    const { rows } = await pool.query(
-        `SELECT id, id_vehiculo, n_visitantes, hora_entrada_edificio, hora_salida_edificio
-       FROM registro
-       WHERE id = $1`,
-        [registroId]
-    );
+async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-    if (rows.length === 0) {
-        const error = new Error('Registro no encontrado');
-        error.status = 404;
-        error.code = 'REGISTRO_NO_ENCONTRADO';
-        throw error;
+    const res = await client.query(`
+      SELECT id, estatus, n_visitantes
+      FROM registro
+      WHERE id = $1
+      FOR UPDATE
+    `, [registroId]);
+
+    if (res.rows.length === 0) {
+      throw Object.assign(new Error('Registro no encontrado'), {
+        status: 404,
+        code: 'REGISTRO_NOT_FOUND'
+      });
     }
 
-    const registro = rows[0];
+    const registro = res.rows[0];
 
-    if (!registro.hora_entrada_edificio) {
-        const error = new Error('El registro aún no ha ingresado al edificio');
-        error.status = 400;
-        error.code = 'SIN_ENTRADA_EDIFICIO';
-        throw error;
+    if (registro.estatus === 'completo') {
+      throw Object.assign(new Error('El registro ya fue finalizado'), {
+        status: 400,
+        code: 'YA_COMPLETADO'
+      });
     }
 
-    if (registro.hora_salida_edificio) {
-        const error = new Error('Este registro ya tiene registrada una salida del edificio');
-        error.status = 400;
-        error.code = 'YA_SALIO_EDIFICIO';
-        throw error;
-    }
+    // validamos las personas que saldran 
+    if (n_salen === registro.n_visitantes) {
 
-    // Contar visitantes que entraron al edificio (códigos -Vxx o -Pxx)
-    const { rows: countRows } = await pool.query(
-        `SELECT COUNT(*) AS total
-       FROM registro_visitantes
-       WHERE registro_id = $1
-         AND codigo ~ '-[VP][0-9]{2}$'`,
-        [registroId]
-    );
+      //traen los id de los visitantes y vehiculos
+      const visitantes = await client.query(`
+      SELECT id_visitante
+      FROM registro_visitantes
+      WHERE registro_id = $1
+    `, [registroId]);
 
-    const totalEsperado = parseInt(countRows[0].total);
+      const vehiculos = await client.query(`
+      SELECT id_vehiculo
+      FROM registro_vehiculos
+      WHERE registro_id = $1
+    `, [registroId]);
 
-    if (cantidad !== totalEsperado) {
-        const error = new Error(`La cantidad de personas entregadas (${cantidad}) no coincide con las que ingresaron (${totalEsperado})`);
-        error.status = 400;
-        error.code = 'CANTIDAD_NO_COINCIDE';
-        throw error;
-    }
-
-    let estatus;
-
-    if (registro.id_vehiculo || salida_vehiculo) {
-        // Vehicular → sigue en tránsito
-        estatus = 'transito';
-    } else {
-        // Peatonal → validar si todos salieron
-        if (cantidad !== registro.n_visitantes) {
-            const error = new Error(`Solo han salido ${cantidad} de ${registro.n_visitantes} visitantes registrados`);
-            error.status = 400;
-            error.code = 'VISITANTES_INCOMPLETOS';
-            throw error;
-        }
-        estatus = 'completo';
-    }
-
-    let nuevaNota = null;
-    if (notas) {
-        nuevaNota = `Notas del edificio: ${notas}`;
-    }
-
-    await pool.query(
-        `UPDATE registro
-           SET hora_salida_edificio = NOW(),
-               estatus = $1,
-               notas = COALESCE($2, notas),
-               id_guardia_edificio_salida = $3,
-               n_salieron = $4
-           WHERE id = $5`,
-        [estatus, nuevaNota, userId, cantidad, registroId]
-    );
-
-    return { estatus };
-}
-
-async function salidaCaseta(registroId, idGuardia, notas, salieron) {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        // 1. Obtener registro
-        const res = await client.query(
-            'SELECT id, estatus, n_visitantes, n_salieron FROM registro WHERE id = $1 FOR UPDATE',
-            [registroId]
-        );
-
-        if (res.rows.length === 0) {
-            const error = new Error('Registro no encontrado');
-            error.status = 404;
-            error.code = 'REGISTRO_NOT_FOUND';
-            throw error;
-        }
-
-        const registro = res.rows[0];
-
-        // 2. Validar estatus permitido
-        if (!['transito', 'en caseta'].includes(registro.estatus)) {
-            const error = new Error(`No se puede marcar salida para un registro con estatus "${registro.estatus}"`);
-            error.status = 400;
-            error.code = 'ESTATUS_INVALIDO';
-            throw error;
-        }
-
-        // 3. Validar número de salidas
-        if (salieron !== registro.n_visitantes) {
-            const error = new Error(`Estan saliendo ${salieron} de ${registro.n_visitantes} personas de la caseta`);
-            error.status = 400;
-            error.code = 'SALIDAS_INCOMPLETAS';
-            throw error;
-        }
-
-        const notaTexto = typeof notas === 'string' ? notas : '';
-        console.log(notaTexto);
-
-        // 4. Actualizar registro
+      // cambiamos estatus y agregamos hora de salida
+      for (const v of vehiculos.rows) {
         await client.query(`
+          UPDATE registro_vehiculos
+          SET hora_salida = NOW()
+          WHERE registro_id = $1 AND id_vehiculo = $2
+        `, [registroId, v.id_vehiculo]);
+      }
+      for (const v of visitantes.rows) {
+        await actualizarVisitanteEvento({
+          registroId,
+          visitanteId: v.id_visitante,
+          evento: 'salida_caseta'
+        });
+      }
+
+      // intentar cerrar el registro
+      await actualizarSalida(n_salen, registroId, client);
+
+      await client.query(`
         UPDATE registro
-        SET hora_salida_caseta = NOW(),
-            id_guardia_caseta_salida = $1,
-            estatus = 'completo',
-            notas = CONCAT(COALESCE(notas, ''), ' | Notas caseta: ', $2::text),
-            n_salieron = $4
+        SET id_guardia_caseta_salida = $1,
+        notas = CONCAT(COALESCE(notas, ''), ' | Nota salida caseta: ', $2::text),
         WHERE id = $3
-      `, [idGuardia, notaTexto, registroId, salieron]);
+      `, [idGuardia, notas, registroId]);
 
-        await client.query('COMMIT');
-
-        return { ok: true };
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
+    } else {
+      throw Object.assign(new Error('El número de personas que salen no coincide con el número de personas que entraron'), {
+        status: 400,
+        code: 'PERSONAS_NO_COINCIDEN'
+      });
     }
+
+    await client.query('COMMIT');
+
+    return {
+      ok: true,
+      message: 'Registro finalizado correctamente por caseta'
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function registrarSalidaCasetaParcial(registroId, visitanteIds = [], vehiculoId, notas, guardiaId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (!Array.isArray(visitanteIds) || visitanteIds.length === 0) {
+      throw Object.assign(new Error('Debes enviar al menos un visitante'), {
+        status: 400,
+        code: 'SIN_VISITANTES'
+      });
+    }
+
+    if (!vehiculoId) {
+      throw Object.assign(new Error('Debes indicar el ID del vehículo que sale'), {
+        status: 400,
+        code: 'VEHICULO_FALTANTE'
+      });
+    }
+
+    // 1️⃣ Registrar salida de visitantes
+    for (const id_visitante of visitanteIds) {
+      await actualizarVisitanteEvento({
+        registroId,
+        visitanteId: id_visitante,
+        evento: 'salida_caseta'
+      });
+    }
+
+    // 2️⃣ Registrar salida del vehículo
+    await client.query(`
+      UPDATE registro_vehiculos
+      SET hora_salida = NOW()
+      WHERE registro_id = $1 AND vehiculo_id = $2
+    `, [registroId, vehiculoId]);
+
+    // 3️⃣ Agregar nota (si viene)
+    if (notas && notas.trim() !== '') {
+      await client.query(`
+        UPDATE registro
+        SET notas = CONCAT(COALESCE(notas, ''), ' | Nota salida parcial: ', $1::text), 
+            id_guardia_caseta_salida = $3,
+            hora_salida_caseta = NOW()
+        WHERE id = $2
+      `, [notas.trim(), registroId, guardiaId]);
+    }
+
+    // 4️⃣ Verificar si ya todos salieron
+    const cerrado = await actualizarSalida(visitantes.length, registroId, client);
+
+    await client.query('COMMIT');
+
+    return {
+      ok: true,
+      cerrado,
+      message: cerrado
+        ? 'Registro finalizado: todos salieron por caseta'
+        : 'Salida parcial registrada (visitantes + vehículo)'
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function obtenerListadoRegistrosDataTable({ start, length, search, filtros }) {
-    const params = [];
-    let where = 'WHERE TRUE'; // base neutra
+  const params = [];
+  let where = 'WHERE TRUE'; // base neutra
 
-    // Búsqueda solo en code_registro
-    if (search) {
-        params.push(`%${search}%`);
-        where += ` AND r.code_registro ILIKE $${params.length}`;
-    }
+  // Búsqueda solo en code_registro
+  if (search) {
+    params.push(`%${search}%`);
+    where += ` AND r.code_registro ILIKE $${params.length}`;
+  }
 
-    // Filtros
-    if (filtros.estatus) {
-        params.push(filtros.estatus);
-        where += ` AND r.estatus = $${params.length}`;
-    }
-    if (filtros.tipo_r) {
-        params.push(filtros.tipo_r);
-        where += ` AND r.tipo_r = $${params.length}`;
-    }
-    if (filtros.edificio) {
-        params.push(filtros.edificio);
-        where += ` AND r.edificio = $${params.length}`;
-    }
+  // Filtros
+  if (filtros.estatus) {
+    params.push(filtros.estatus);
+    where += ` AND r.estatus = $${params.length}`;
+  }
+  if (filtros.tipo_r) {
+    params.push(filtros.tipo_r);
+    where += ` AND r.tipo_r = $${params.length}`;
+  }
+  if (filtros.edificio) {
+    params.push(filtros.edificio);
+    where += ` AND r.edificio = $${params.length}`;
+  }
 
-    // Total general
-    const total = await pool.query(`SELECT COUNT(*) FROM registro`);
-    // Total con filtros
-    const totalFiltrado = await pool.query(`
+  // Total general
+  const total = await pool.query(`SELECT COUNT(*) FROM registro`);
+  // Total con filtros
+  const totalFiltrado = await pool.query(`
       SELECT COUNT(*) FROM registro r
       LEFT JOIN users u ON u.id = r.id_persona_a_visitar
       ${where}
     `, params);
 
-    // Consulta final paginada
-    params.push(length, start);
-    const registros = await pool.query(`
+  // Consulta final paginada
+  params.push(length, start);
+  const registros = await pool.query(`
       SELECT r.id, r.code_registro, r.edificio, r.n_visitantes,
              u.name AS persona_a_visitar, r.estatus, r.tipo_r
       FROM registro r
@@ -472,163 +606,192 @@ async function obtenerListadoRegistrosDataTable({ start, length, search, filtros
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `, params);
 
-    return {
-        recordsTotal: parseInt(total.rows[0].count),
-        recordsFiltered: parseInt(totalFiltrado.rows[0].count),
-        data: registros.rows
-    };
+  return {
+    recordsTotal: parseInt(total.rows[0].count),
+    recordsFiltered: parseInt(totalFiltrado.rows[0].count),
+    data: registros.rows
+  };
 }
 
-async function obtenerDetalleRegistro(id) {
-    // 1. Registro principal
-    const result = await pool.query(`
-      SELECT 
-        r.id,
-        r.code_registro,
-        r.estatus,
-        r.tipo_r,
-        r.edificio,
-        r.n_visitantes,
-        r.n_salieron,
-        r.motivo,
-        r.notas,
-        r.id_persona_a_visitar,
-        r.hora_entrada_caseta,
-        r.hora_entrada_edificio,
-        r.hora_salida_edificio,
-        r.hora_salida_caseta,
-        r.fecha_create,
-        r.fecha_update,
-        r.id_vehiculo,
-        r.id_guardia_caseta,
-        r.id_guardia_edificio,
-        r.id_guardia_caseta_salida,
-        r.id_guardia_edificio_salida,
-        r.num_marbete,
-        u.name AS persona_a_visitar
+async function obtenerDetalleRegistro(registroId) {
+  const client = await pool.connect();
+  try {
+    const resRegistro = await client.query(`
+      SELECT r.id, r.tipo_r, r.estatus, r.code_registro, r.notas,
+             r.hora_entrada_caseta, r.hora_salida_caseta,
+             r.hora_entrada_edificio, r.hora_salida_edificio,
+             r.fecha_creacion
       FROM registro r
-      LEFT JOIN users u ON u.id = r.id_persona_a_visitar
       WHERE r.id = $1
-    `, [id]);
+    `, [registroId]);
 
-    const registro = result.rows[0];
-    if (!registro) return null;
-
-    // 2. Visitantes
-    const visitantesRes = await pool.query(`
-      SELECT 
-        rv.id,
-        rv.codigo,
-        rv.tag_type,
-        rv.n_tarjeta,
-        v.nombre AS nombre_visitante,
-        v.telefono,
-        v.empresa,
-        v.tipo,
-        v.foto_persona,
-        v.foto_ine,
-        v.activo
-      FROM registro_visitantes rv
-      JOIN visitantes v ON v.id = rv.id_visitante
-      WHERE rv.registro_id = $1
-      ORDER BY rv.codigo
-    `, [id]);
-
-    // 3. Vehículo
-    let vehiculo = null;
-    if (registro.id_vehiculo) {
-        const vehiculoRes = await pool.query(`
-        SELECT 
-          v.id,
-          v.placa,
-          v.foto_placa
-        FROM vehiculos v
-        WHERE v.id = $1
-      `, [registro.id_vehiculo]);
-
-        vehiculo = vehiculoRes.rows[0] || null;
+    if (resRegistro.rows.length === 0) {
+      throw Object.assign(new Error('Registro no encontrado'), {
+        status: 404,
+        code: 'NO_EXISTE'
+      });
     }
+
+    const registro = resRegistro.rows[0];
+
+    // Obtener visitantes
+    const resVisitantes = await client.query(`
+      SELECT rv.*, v.nombre, v.tipo, v.empresa
+      FROM registro_visitantes rv
+      INNER JOIN visitante v ON rv.id_visitante = v.id
+      WHERE rv.registro_id = $1
+    `, [registroId]);
+
+    // Obtener todos los vehículos asociados
+    const resVehiculos = await client.query(`
+      SELECT
+        rv.vehiculo_id AS id,
+        v.placas,
+        v.marca,
+        v.modelo,
+        v.color,
+        v.tipo,
+        rv.hora_entrada,
+        rv.hora_salida
+      FROM registro_vehiculos rv
+      INNER JOIN vehiculo v ON rv.vehiculo_id = v.id
+      WHERE rv.registro_id = $1
+    `, [registroId]);
 
     return {
-        registro,
-        visitantes: visitantesRes.rows,
-        vehiculo
+      ...registro,
+      visitantes: resVisitantes.rows,
+      vehiculos: resVehiculos.rows
     };
+  } catch (error) {
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
-async function asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante) {
-    const client = await pool.connect();
-    let status = 'transito';
-    try {
-        await client.query('BEGIN');
+async function asociarVehiculoARegistro(codeRegistro, vehiculoId, guardiaId, id_visitante, tag_type, n_tarjeta) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-        const { rows } = await client.query(`
-        SELECT id, estatus, n_visitantes, code_registro
-        FROM registro
-        WHERE code_registro = $1
-        FOR UPDATE
-      `, [code_registro]);
+    //buscar registro
+    const registro = await client.query(`
+      SELECT id FROM registro WHERE code_registro = $1
+    `, [codeRegistro]);
 
-        if (rows.length === 0) {
-            throw new Error('Registro no encontrado');
-        }
-
-        const registro = rows[0];
-
-        if (registro.estatus !== 'en edificio' && registro.estatus !== 'transito') {
-            throw new Error('Solo se puede asociar un vehículo a un registro que esté en edificio');
-        }
-
-        if (registro.estatus === 'en edificio') {
-            status = 'uber en espera';
-        }
-
-        const codigoConductor = generateDriverTag(registro.code_registro);
-
-        // Insertar visitante (conductor)
-        await client.query(`
-        INSERT INTO registro_visitantes (
-          registro_id, id_visitante, codigo, tag_type
-        ) VALUES ($1, $2, $3, 'etiqueta')
-      `, [registro.id, id_visitante, codigoConductor]);
-
-        // Aumentar n_visitantes
-        const nuevoTotal = registro.n_visitantes + 1;
-
-        await client.query(`
-            UPDATE registro
-            SET id_vehiculo = $1,
-                estatus = $4,
-                hora_entrada_caseta = NOW(),
-                n_visitantes = $2
-            WHERE id = $3
-          `, [id_vehiculo, nuevoTotal, registro.id, status]);
-
-        await client.query('COMMIT');
-
-        return { message: 'Vehículo y conductor asociados correctamente' };
-    } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    } finally {
-        client.release();
+    if (registro.rows.length === 0) {
+      throw Object.assign(new Error('Registro no encontrado'), {
+        status: 404,
+        code: 'NO_EXISTE'
+      });
     }
+
+    const registroId = registro.rows[0].id;
+
+    // Insertar el vehículo en la tabla de asociación
+    await client.query(`
+      INSERT INTO registro_vehiculos (
+        registro_id,
+        vehiculo_id,
+        hora_entrada
+      ) VALUES ($1, $2, NOW())
+    `, [registroId, vehiculoId]);
+
+    const codigoConductor = generateDriverTag(codeRegistro);
+
+    // Insertar el visitante en la tabla de asociación
+    await client.query(`
+        INSERT INTO registro_visitantes (
+          registro_id,
+          id_visitante,
+          codigo,
+          tag_type,
+          n_tarjeta,
+          estatus,
+          hora_entrada_caseta
+        ) VALUES ($1, $2, $3, $4, $5, 'en caseta', NOW())
+      `, [registroId, id_visitante, codigoConductor, tag_type, n_tarjeta]);
+
+    // traer n_visitantes para sumar uno
+    const nVisitantes = await client.query(`
+      SELECT n_visitantes FROM registro WHERE id = $1
+    `, [registroId]);
+
+    // Agregar nota opcional y auditoría
+    await client.query(`
+      UPDATE registro
+      SET notas = CONCAT(COALESCE(notas, ''), ' | Vehículo adicional vinculado'),
+          id_guardia_caseta = $1,
+          n_visitantes = $2
+      WHERE id = $3
+    `, [guardiaId, nVisitantes.rows[0].n_visitantes + 1, registroId]);
+
+    await client.query('COMMIT');
+
+    return { registro_id: registroId, code_registro: codeRegistro, codigo_conductor: codigoConductor };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function nombreVisitante(idVisitante) {
-    const res = await pool.query(`SELECT nombre FROM visitantes WHERE id = $1`, [idVisitante]);
-    return res.rows[0].nombre;
+  const res = await pool.query(`SELECT nombre FROM visitantes WHERE id = $1`, [idVisitante]);
+  return res.rows[0].nombre;
 }
 
+async function actualizarVisitanteEvento({ registroId, visitanteId, evento, estatus = null }) {
+  const campos = {
+    entrada_caseta: 'hora_entrada_caseta',
+    entrada_edificio: 'hora_entrada_edificio',
+    salida_edificio: 'hora_salida_edificio',
+    salida_caseta: 'hora_salida_caseta',
+  };
+
+  const nuevosEstatus = {
+    entrada_caseta: 'en caseta',
+    entrada_edificio: 'en edificio',
+    salida_edificio: 'salió del edificio',
+    salida_caseta: 'completo',
+  };
+
+  const campoHora = campos[evento];
+  let nuevoEstatus = nuevosEstatus[evento];
+
+  if (estatus !== undefined && estatus !== null) {
+    nuevoEstatus = estatus;
+  }
+
+  if (!campoHora || !nuevoEstatus) {
+    throw new Error(`Evento no válido: ${evento}`);
+  }
+
+  const query = `
+      UPDATE registro_visitantes
+      SET
+        ${campoHora} = NOW(),
+        estatus = $1
+      WHERE
+        registro_id = $2 AND id_visitante = $3
+    `;
+
+  await pool.query(query, [nuevoEstatus, registroId, visitanteId]);
+}
+
+
 module.exports = {
-    crearRegistroYConductor,
-    agregarVisitantesEdificio,
-    crearRegistroPeatonal,
-    buscarRegistroPorCodigo,
-    salidaEdificio,
-    salidaCaseta,
-    obtenerListadoRegistrosDataTable,
-    obtenerDetalleRegistro,
-    asociarVehiculoARegistro,
-    nombreVisitante
+  crearRegistroYConductor,
+  agregarVisitantesEdificio,
+  crearRegistroPeatonal,
+  buscarRegistroPorCodigo,
+  salidaEdificio,
+  salidaCaseta,
+  obtenerListadoRegistrosDataTable,
+  obtenerDetalleRegistro,
+  asociarVehiculoARegistro,
+  nombreVisitante,
+  registrarSalidaCasetaParcial,
 };

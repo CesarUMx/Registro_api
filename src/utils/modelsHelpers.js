@@ -17,6 +17,57 @@ async function validateTarjetaDisponible(n_tarjeta, client) {
     }
   }
 
+  //funcion para actualizar el numero de personas que salieron e intentar cerrar el registro
+  async function actualizarSalida(salen, registroId, client) {
+
+    let cerrado = false;
+
+    // valor de n_salieron
+    const resultSalieron = await client.query(`
+      SELECT n_salieron
+      FROM registro
+      WHERE id = $1
+    `, [registroId]);
+
+    const nSalieron = resultSalieron.rows[0].n_salieron;
+
+    //actualizar el numeor de personas que salen
+    await client.query(`
+      UPDATE registro
+      SET n_salieron = $1
+      WHERE id = $2
+    `, [nSalieron + salen, registroId]);
+
+    // traer n_visitantes y n_salieron
+    const result = await client.query(`
+      SELECT n_visitantes, n_salieron
+      FROM registro
+      WHERE id = $1
+    `, [registroId]);
+
+    const resVehiculos = await client.query(`
+      SELECT COUNT(*) FILTER (WHERE hora_salida IS NOT NULL) AS salieron,
+             COUNT(*) AS total
+      FROM registro_vehiculos
+      WHERE registro_id = $1
+    `, [registroId]);
+
+    const { n_visitantes, n_salieron } = result.rows[0];
+
+    if ((parseInt(n_visitantes) === parseInt(n_salieron)) && (parseInt(resVehiculos.rows[0].salieron) === parseInt(resVehiculos.rows[0].total))) {
+      await client.query(`
+        UPDATE registro
+        SET estatus = 'completo',
+        hora_salida_edificio = NOW()
+        WHERE id = $1
+      `, [registroId]);
+      cerrado = true;
+    }
+
+    return cerrado;
+  }
+
   module.exports = {
-    validateTarjetaDisponible
+    validateTarjetaDisponible,
+    actualizarSalida
   };

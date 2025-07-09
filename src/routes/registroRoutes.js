@@ -4,7 +4,7 @@ const { verifyJWT } = require('../middlewares/auth');
 const { postRegistroEntradaCaseta, patchEntradaEdificio, postEntradaPeatonal,
     getRegistroPorCodigo, patchSalidaEdificio, patchSalidaCaseta, 
     getRegistrosListado, getRegistroDetalle, patchAsociarVehiculo,
-    getRegistroPublico
+    getRegistroPublico, patchSalidaCasetaParcial
 } = require('../controllers/registroController');
 
 // Ruta pública para obtener detalles de un registro por código (sin autenticación)
@@ -30,6 +30,9 @@ router.patch('/:id/salida-edificio', patchSalidaEdificio);
 
 // Salida por caseta
 router.patch('/:id/salida-caseta', patchSalidaCaseta);
+
+// Salida parcial por caseta
+router.patch('/:id/salida-caseta-parcial', patchSalidaCasetaParcial);
 
 // Listado de registros
 router.post('/', getRegistrosListado);

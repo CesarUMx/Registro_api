@@ -1,7 +1,7 @@
 const { crearRegistroYConductor, agregarVisitantesEdificio,
   crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio,
   salidaCaseta, obtenerListadoRegistrosDataTable, obtenerDetalleRegistro,
-  asociarVehiculoARegistro, nombreVisitante
+  asociarVehiculoARegistro, nombreVisitante, registrarSalidaCasetaParcial
 } = require('../models/registroModel');
 const { checkRequiredFields, handleError, validateGuardType, validarCampos,
 } = require('../utils/controllerHelpers');
@@ -21,11 +21,12 @@ async function postRegistroEntradaCaseta(req, res) {
       tag_type,
       n_tarjeta,
       id_preregistro,
-      num_marbete
+      num_marbete,
+      motivo
     } = req.body;
 
     // Validaciones obligatorias
-    checkRequiredFields(['id_visitante_conductor', 'tipo_conductor', 'n_visitantes', 'tag_type', 'num_marbete'], req.body);
+    checkRequiredFields(['id_vehiculo', 'id_visitante_conductor', 'tipo_conductor', 'n_visitantes', 'tag_type', 'num_marbete', 'motivo'], req.body);
 
     // Si tag_type es "tarjeta", n_tarjeta es obligatorio
     if (tag_type === 'tarjeta' && !n_tarjeta) {
@@ -34,9 +35,10 @@ async function postRegistroEntradaCaseta(req, res) {
       error.code = 'MISSING_TARJETA';
       throw error;
     }
+    console.log("id_vehiculo", id_vehiculo);
 
     const resultado = await crearRegistroYConductor({
-      idVehiculo: id_vehiculo || null,
+      vehiculo_id: id_vehiculo,
       idVisitanteConductor: id_visitante_conductor,
       tipoVisitanteConductor: tipo_conductor,
       nVisitantes: n_visitantes,
@@ -44,7 +46,8 @@ async function postRegistroEntradaCaseta(req, res) {
       tagType: tag_type,
       nTarjeta: n_tarjeta || null,
       idPreregistro: id_preregistro || null,
-      numMarbete: num_marbete
+      numMarbete: num_marbete,
+      motivo: motivo
     });
 
     res.status(201).json({
@@ -67,7 +70,7 @@ async function patchEntradaEdificio(req, res) {
 
     const idPersonaVisitar = parseInt(req.body.id_persona_a_visitar);
 
-    validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
+    await validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
 
     const resultado = await agregarVisitantesEdificio(registroId, visitantes, req.user.userId, edificio, idPersonaVisitar, motivo);
 
@@ -127,7 +130,7 @@ async function postEntradaPeatonal(req, res) {
     const { visitantes, edificio, motivo } = req.body;
     const idPersonaVisitar = parseInt(req.body.id_persona_a_visitar);
 
-    validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
+    await validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
 
     const resultado = await crearRegistroPeatonal({
       visitantes,
@@ -166,7 +169,7 @@ async function postEntradaPeatonal(req, res) {
             nombresVisitantes,
             edificio,
             motivo,
-            resultado.code_registro || `Registro #${registroId}`
+            resultado.code_registro
           );
 
           console.log(`Correo de alerta enviado a ${personaAVisitar.email} con ${nombresVisitantes.length} visitantes`);
@@ -211,20 +214,27 @@ async function patchSalidaEdificio(req, res) {
     validateGuardType(req.user, ['entrada']);
 
     const registroId = parseInt(req.params.id);
-    const { cantidad, notas, salida_vehiculo } = req.body;
+    const { visitantes, notas, salida_vehiculo = false, completo = false } = req.body;
 
-    if (!cantidad || isNaN(cantidad)) {
-      const error = new Error('Se requiere el número de personas que entregaron etiqueta/tarjeta');
+    if (!Array.isArray(visitantes) || visitantes.length === 0) {
+      const error = new Error('Debes enviar al menos un visitante que salió');
       error.status = 400;
-      error.code = 'CANTIDAD_REQUERIDA';
+      error.code = 'VISITANTES_REQUERIDOS';
       throw error;
     }
 
-    const resultado = await salidaEdificio(registroId, cantidad, notas, req.user.userId, salida_vehiculo);
+    const resultado = await salidaEdificio(
+      registroId,
+      visitantes,
+      notas,
+      req.user.userId,
+      salida_vehiculo,
+      completo
+    );
 
     res.status(200).json({
       ok: true,
-      message: 'Salida del edificio registrada correctamente',
+      message: resultado.message,
       estatus: resultado.estatus
     });
   } catch (error) {
@@ -255,7 +265,8 @@ async function patchSalidaCaseta(req, res) {
 
     res.status(200).json({
       ok: true,
-      mensaje: 'Salida por caseta registrada correctamente'
+      mensaje: 'Salida por caseta registrada correctamente',
+      ...resultado
     });
   } catch (error) {
     handleError(res, error);
@@ -299,40 +310,40 @@ async function getRegistrosListado(req, res) {
 
 async function getRegistroDetalle(req, res) {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return res.status(400).json({ ok: false, error: 'ID inválido' });
-    }
-
+    const { id } = req.params;
     const resultado = await obtenerDetalleRegistro(id);
-    if (!resultado) {
-      return res.status(404).json({ ok: false, error: 'Registro no encontrado' });
-    }
 
     res.status(200).json({
       ok: true,
-      data: resultado
+      data: resultado // ya incluye visitantes y vehiculos como arrays
     });
   } catch (error) {
     console.error('Error en getRegistroDetalle:', error);
-    res.status(500).json({ ok: false, error: 'Error interno del servidor' });
+    res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error interno'
+    });
   }
 }
 
 async function patchAsociarVehiculo(req, res) {
   try {
-    const { code_registro, id_vehiculo, id_visitante } = req.body;
+    const { code_registro, id_vehiculo, id_visitante, tag_type, n_tarjeta = null } = req.body;
 
-    if (!code_registro || !id_vehiculo || !id_visitante) {
+    if (!code_registro || !id_vehiculo || !id_visitante || !tag_type) {
       return res.status(400).json({
         ok: false,
         error: 'Faltan datos necesarios para vincular vehículo'
       });
     }
 
-    const resultado = await asociarVehiculoARegistro(code_registro, id_vehiculo, id_visitante);
+    const resultado = await asociarVehiculoARegistro(code_registro, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta);
 
-    res.status(200).json({ ok: true, ...resultado });
+    res.status(200).json({ 
+      ok: true, 
+      message: 'Vehículo asociado exitosamente',
+      ...resultado 
+    });
 
   } catch (error) {
     console.error('Error en patchAsociarVehiculo:', error);
@@ -340,35 +351,48 @@ async function patchAsociarVehiculo(req, res) {
   }
 }
 
+async function patchSalidaCasetaParcial(req, res) {
+  try {
+    const registroId = req.params.id;
+    const { visitantes, vehiculo_id, notas } = req.body;
+
+    const resultado = await registrarSalidaCasetaParcial(
+      registroId,
+      visitantes,
+      vehiculo_id,
+      notas,
+      req.user.id
+    );
+
+    res.status(200).json({
+      ok: true,
+      ...resultado
+    });
+  } catch (error) {
+    console.error('Error en patchSalidaCasetaParcial:', error);
+    res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error interno'
+    });
+  }
+}
 
 // Función para obtener detalles de un registro públicamente por código
 async function getRegistroPublico(req, res) {
   try {
-    const codigo = req.params.codigo;
-    if (!codigo) {
-      return res.status(400).json({ ok: false, error: 'Código inválido' });
-    }
+    const { id } = req.params;
+    const resultado = await obtenerDetalleRegistro(id);
 
-    // Buscar el registro por código
-    const registro = await buscarRegistroPorCodigo(codigo);
-    if (!registro) {
-      return res.status(404).json({ ok: false, error: 'Registro no encontrado' });
-    }
-
-    // Si el registro existe, obtener los detalles completos
-    const resultado = await obtenerDetalleRegistro(registro.id);
-    if (!resultado) {
-      return res.status(404).json({ ok: false, error: 'Detalles del registro no encontrados' });
-    }
-
-    // Devolver solo la información necesaria para la vista pública
     res.status(200).json({
       ok: true,
-      data: resultado
+      data: resultado // misma estructura pública
     });
   } catch (error) {
     console.error('Error en getRegistroPublico:', error);
-    res.status(500).json({ ok: false, error: 'Error interno del servidor' });
+    res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error interno'
+    });
   }
 }
 
@@ -382,5 +406,6 @@ module.exports = {
   getRegistrosListado,
   getRegistroDetalle,
   patchAsociarVehiculo,
-  getRegistroPublico
+  getRegistroPublico,
+  patchSalidaCasetaParcial
 };

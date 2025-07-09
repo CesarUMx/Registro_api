@@ -51,7 +51,7 @@ async function enviarAlertaVisita(email, nombreDestinatario, visitantes, edifici
               <li><strong>Edificio:</strong> ${edificio}</li>
               <li><strong>Motivo:</strong> ${motivo}</li>
               <li><strong>Código de registro:</strong> ${codigoRegistro}</li>
-              <><strong>Fecha y hora de registro:</strong> ${new Date().toLocaleString()}</li>
+              <li><strong>Fecha y hora de registro:</strong> ${new Date().toLocaleString()}</li>
             </ul>
             
             ${visitantesHtml}
