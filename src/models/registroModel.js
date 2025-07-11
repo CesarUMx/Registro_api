@@ -6,6 +6,7 @@ const {
   generateVisitorTag
 } = require('../utils/codeGenerator');
 const { validateTarjetaDisponible, actualizarSalida } = require('../utils/modelsHelpers');
+const { withTransaction } = require('../utils/controllerHelpers');
 
 async function crearRegistroYConductor({
   vehiculo_id,
@@ -19,10 +20,8 @@ async function crearRegistroYConductor({
   numMarbete,
   motivo
 }) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+  
+  return withTransaction(async (client) => {
     // Determinar tipo de registro
     let tipo_r = 'completo';
     if (['proveedor', 'taxi o uber'].includes(tipoVisitanteConductor)) {
@@ -38,11 +37,10 @@ async function crearRegistroYConductor({
          n_visitantes,
          estatus,
          tipo_r,
-         num_marbete,
          motivo
-       ) VALUES ($1, $2, NOW(), $3, 'iniciado', $4, $5, $6)
+       ) VALUES ($1, $2, NOW(), $3, 'iniciado', $4, $5)
        RETURNING id`,
-      [idPreregistro, idGuardiaCaseta, nVisitantes, tipo_r, numMarbete, motivo]
+      [idPreregistro, idGuardiaCaseta, nVisitantes, tipo_r, motivo]
     );
 
     const registroId = result.rows[0].id;
@@ -77,31 +75,24 @@ async function crearRegistroYConductor({
         `INSERT INTO registro_vehiculos (
            registro_id,
            vehiculo_id,
-           hora_entrada
-         ) VALUES ($1, $2, NOW())`,
-        [registroId, vehiculo_id]
+           hora_entrada,
+           num_marbete
+         ) VALUES ($1, $2, NOW(), $3)`,
+        [registroId, vehiculo_id, numMarbete]
       );
     }
 
-    await client.query('COMMIT');
     return {
       registro_id: registroId,
       code_registro: codeRegistro,
       codigo_conductor: codigoConductor
     };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrada, edificio, idPersonaVisitar = null, motivo = null) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+  
+  return withTransaction(async (client) => {
     const { rows } = await client.query(`SELECT * FROM registro WHERE id = $1`, [registroId]);
     if (rows.length === 0) {
       throw Object.assign(new Error('Registro no encontrado'), { status: 404 });
@@ -127,7 +118,7 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
     const totalPrevisto = totalActual + visitantes.length;
 
     if (totalPrevisto > registro.n_visitantes) {
-      throw Object.assign(new Error(`Se excede el número de personas que pueden ingresar al edificio. Ya hay ${totalActual} y se intentan agregar ${nuevos}, el conductor ya se cuenta`), {
+      throw Object.assign(new Error(`Se excede el número de personas que pueden ingresar al edificio. Ya hay ${totalActual} y se intentan agregar ${visitantes.length}, el conductor ya se cuenta`), {
         status: 400,
         code: 'LIMIT_EXCEEDED'
       });
@@ -176,21 +167,12 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
       [edificio, idPersonaVisitar, motivo, idGuardiaEntrada, registroId]
     );
 
-    await client.query('COMMIT');
     return { ok: true, message: 'Visitantes registrados en edificio', codigos, code_registro: registro.code_registro };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function crearRegistroPeatonal({ visitantes, edificio, motivo, idPersonaVisitar = null, idGuardiaEntrada }) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+  return withTransaction(async (client) => {
     // 1. Crear registro principal con estatus 'iniciado'
     const result = await client.query(
       `INSERT INTO registro (
@@ -245,19 +227,12 @@ async function crearRegistroPeatonal({ visitantes, edificio, motivo, idPersonaVi
       );
     }
 
-    await client.query('COMMIT');
-
     return {
       registro_id: registroId,
       code_registro: codeRegistro,
       codigos
     };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function buscarRegistroPorCodigo(code_registro) {
@@ -293,16 +268,12 @@ async function buscarRegistroPorCodigo(code_registro) {
     estatus: registro.estatus,
     tipo,
     n_visitantes: registro.n_visitantes,
-    hora_entrada_edificio: registro.hora_entrada_edificio,
     visitantes
   };
 }
 
-async function salidaEdificio(registroId, visitantes, notas, userId, salida_vehiculo = false, completo = false) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+async function salidaEdificio(registroId, visitantes, notas = '', userId, salida_vehiculo = false, completo = false) {
+  return withTransaction(async (client) => {
     const resRegistro = await client.query(`
       SELECT id, tipo_r, estatus
       FROM registro
@@ -344,7 +315,7 @@ async function salidaEdificio(registroId, visitantes, notas, userId, salida_vehi
       const status = status_actual.rows[0].estatus;
 
       if (status !== 'en edificio') {
-        throw Object.assign(new Error('El visitante ya salió del edificio'), {
+        throw Object.assign(new Error('El visitante ya salio del edificio'), {
           status: 400,
           code: 'YA_SALIO'
         });
@@ -352,7 +323,7 @@ async function salidaEdificio(registroId, visitantes, notas, userId, salida_vehi
 
       const nuevoEstatus = salida_vehiculo
         ? 'uber en espera'
-        : 'salió del edificio';
+        : 'salio del edificio';
 
       // 1️⃣ Marcar salida del edificio
       await actualizarVisitanteEvento({
@@ -388,27 +359,17 @@ async function salidaEdificio(registroId, visitantes, notas, userId, salida_vehi
       cerrado = await actualizarSalida(visitantes.length, registroId, client);
     }
 
-    await client.query('COMMIT');
-
     return {
       ok: true,
       message: cerrado
         ? 'Registro finalizado correctamente'
         : `Salida registrada para ${visitantes.length} visitante(s)`
     };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+  return withTransaction(async (client) => {
     const res = await client.query(`
       SELECT id, estatus, n_visitantes
       FROM registro
@@ -470,7 +431,7 @@ async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
       await client.query(`
         UPDATE registro
         SET id_guardia_caseta_salida = $1,
-        notas = CONCAT(COALESCE(notas, ''), ' | Nota salida caseta: ', $2::text),
+        notas = CONCAT(COALESCE(notas, ''), ' | Nota salida caseta: ', $2::text)
         WHERE id = $3
       `, [idGuardia, notas, registroId]);
 
@@ -481,25 +442,15 @@ async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
       });
     }
 
-    await client.query('COMMIT');
-
     return {
       ok: true,
       message: 'Registro finalizado correctamente por caseta'
     };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function registrarSalidaCasetaParcial(registroId, visitanteIds = [], vehiculoId, notas, guardiaId) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+  return withTransaction(async (client) => {
     if (!Array.isArray(visitanteIds) || visitanteIds.length === 0) {
       throw Object.assign(new Error('Debes enviar al menos un visitante'), {
         status: 400,
@@ -542,9 +493,7 @@ async function registrarSalidaCasetaParcial(registroId, visitanteIds = [], vehic
     }
 
     // 4️⃣ Verificar si ya todos salieron
-    const cerrado = await actualizarSalida(visitantes.length, registroId, client);
-
-    await client.query('COMMIT');
+    const cerrado = await actualizarSalida(visitanteIds.length, registroId, client);
 
     return {
       ok: true,
@@ -553,12 +502,7 @@ async function registrarSalidaCasetaParcial(registroId, visitanteIds = [], vehic
         ? 'Registro finalizado: todos salieron por caseta'
         : 'Salida parcial registrada (visitantes + vehículo)'
     };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function obtenerListadoRegistrosDataTable({ start, length, search, filtros }) {
@@ -614,14 +558,15 @@ async function obtenerListadoRegistrosDataTable({ start, length, search, filtros
 }
 
 async function obtenerDetalleRegistro(registroId) {
-  const client = await pool.connect();
-  try {
+  return withTransaction(async (client) => {
     const resRegistro = await client.query(`
       SELECT r.id, r.tipo_r, r.estatus, r.code_registro, r.notas,
              r.hora_entrada_caseta, r.hora_salida_caseta,
              r.hora_entrada_edificio, r.hora_salida_edificio,
-             r.fecha_creacion
+             r.n_visitantes, r.n_salieron, r.edificio, r.motivo,
+             r.id_persona_a_visitar, u.name AS persona_a_visitar
       FROM registro r
+      LEFT JOIN users u ON u.id = r.id_persona_a_visitar
       WHERE r.id = $1
     `, [registroId]);
 
@@ -636,9 +581,9 @@ async function obtenerDetalleRegistro(registroId) {
 
     // Obtener visitantes
     const resVisitantes = await client.query(`
-      SELECT rv.*, v.nombre, v.tipo, v.empresa
+      SELECT rv.*, v.nombre, v.tipo, v.empresa, v.foto_persona, v.foto_ine
       FROM registro_visitantes rv
-      INNER JOIN visitante v ON rv.id_visitante = v.id
+      INNER JOIN visitantes v ON rv.id_visitante = v.id
       WHERE rv.registro_id = $1
     `, [registroId]);
 
@@ -646,15 +591,13 @@ async function obtenerDetalleRegistro(registroId) {
     const resVehiculos = await client.query(`
       SELECT
         rv.vehiculo_id AS id,
-        v.placas,
-        v.marca,
-        v.modelo,
-        v.color,
-        v.tipo,
+        v.foto_placa,
+        v.placa,
         rv.hora_entrada,
-        rv.hora_salida
+        rv.hora_salida,
+        rv.num_marbete
       FROM registro_vehiculos rv
-      INNER JOIN vehiculo v ON rv.vehiculo_id = v.id
+      INNER JOIN vehiculos v ON rv.vehiculo_id = v.id
       WHERE rv.registro_id = $1
     `, [registroId]);
 
@@ -663,18 +606,11 @@ async function obtenerDetalleRegistro(registroId) {
       visitantes: resVisitantes.rows,
       vehiculos: resVehiculos.rows
     };
-  } catch (error) {
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
-async function asociarVehiculoARegistro(codeRegistro, vehiculoId, guardiaId, id_visitante, tag_type, n_tarjeta) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
+async function asociarVehiculoARegistro(codeRegistro, vehiculoId, guardiaId, id_visitante, tag_type, n_tarjeta, num_marbete) {
+  return withTransaction(async (client) => {
     //buscar registro
     const registro = await client.query(`
       SELECT id FROM registro WHERE code_registro = $1
@@ -694,9 +630,10 @@ async function asociarVehiculoARegistro(codeRegistro, vehiculoId, guardiaId, id_
       INSERT INTO registro_vehiculos (
         registro_id,
         vehiculo_id,
-        hora_entrada
-      ) VALUES ($1, $2, NOW())
-    `, [registroId, vehiculoId]);
+        hora_entrada,
+        num_marbete
+      ) VALUES ($1, $2, NOW(), $3)
+    `, [registroId, vehiculoId, num_marbete]);
 
     const codigoConductor = generateDriverTag(codeRegistro);
 
@@ -727,15 +664,8 @@ async function asociarVehiculoARegistro(codeRegistro, vehiculoId, guardiaId, id_
       WHERE id = $3
     `, [guardiaId, nVisitantes.rows[0].n_visitantes + 1, registroId]);
 
-    await client.query('COMMIT');
-
     return { registro_id: registroId, code_registro: codeRegistro, codigo_conductor: codigoConductor };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 async function nombreVisitante(idVisitante) {
@@ -754,7 +684,7 @@ async function actualizarVisitanteEvento({ registroId, visitanteId, evento, esta
   const nuevosEstatus = {
     entrada_caseta: 'en caseta',
     entrada_edificio: 'en edificio',
-    salida_edificio: 'salió del edificio',
+    salida_edificio: 'salio del edificio',
     salida_caseta: 'completo',
   };
 

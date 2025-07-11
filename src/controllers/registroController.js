@@ -328,16 +328,16 @@ async function getRegistroDetalle(req, res) {
 
 async function patchAsociarVehiculo(req, res) {
   try {
-    const { code_registro, id_vehiculo, id_visitante, tag_type, n_tarjeta = null } = req.body;
+    const { code_registro, id_vehiculo, id_visitante, tag_type, n_tarjeta = null, num_marbete } = req.body;
 
-    if (!code_registro || !id_vehiculo || !id_visitante || !tag_type) {
+    if (!code_registro || !id_vehiculo || !id_visitante || !tag_type || !num_marbete) {
       return res.status(400).json({
         ok: false,
         error: 'Faltan datos necesarios para vincular vehículo'
       });
     }
 
-    const resultado = await asociarVehiculoARegistro(code_registro, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta);
+    const resultado = await asociarVehiculoARegistro(code_registro, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta, num_marbete);
 
     res.status(200).json({ 
       ok: true, 

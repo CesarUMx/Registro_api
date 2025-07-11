@@ -3,17 +3,28 @@ const pool = require('../config/db');
 /**
  * Ejecuta una función dentro de una transacción de base de datos
  * @param {Function} callback - Función a ejecutar dentro de la transacción
+ * @param {Object} [existingClient] - Cliente de conexión existente (opcional)
  * @returns {Promise<any>} - Resultado de la función callback
  */
-async function withTransaction(callback) {
+async function withTransaction(callback, existingClient = null) {
+  // Si se proporciona un cliente existente, lo usamos
+  // De lo contrario, creamos uno nuevo
+  const client = existingClient || await pool.connect();
+  const shouldReleaseClient = !existingClient;
+  
   try {
-    await pool.query('BEGIN');
-    const result = await callback();
-    await pool.query('COMMIT');
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
     return result;
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    // Solo liberamos el cliente si lo creamos nosotros
+    if (shouldReleaseClient) {
+      client.release();
+    }
   }
 }
 
