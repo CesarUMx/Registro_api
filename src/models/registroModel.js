@@ -356,7 +356,7 @@ async function salidaEdificio(registroId, visitantes, notas = '', userId, salida
     // 4️⃣ Intentar cerrar el registro si ya salieron todos del edificio y NO esperan vehículo
     let cerrado = false;
     if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completo) {
-      cerrado = await actualizarSalida(visitantes.length, registroId, client);
+      cerrado = await actualizarSalida(visitantes.length, registroId, client, "edificio");
     }
 
     return {
@@ -404,7 +404,7 @@ async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
     `, [registroId]);
 
       const vehiculos = await client.query(`
-      SELECT id_vehiculo
+      SELECT vehiculo_id
       FROM registro_vehiculos
       WHERE registro_id = $1
     `, [registroId]);
@@ -414,8 +414,8 @@ async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
         await client.query(`
           UPDATE registro_vehiculos
           SET hora_salida = NOW()
-          WHERE registro_id = $1 AND id_vehiculo = $2
-        `, [registroId, v.id_vehiculo]);
+          WHERE registro_id = $1 AND vehiculo_id = $2
+        `, [registroId, v.vehiculo_id]);
       }
       for (const v of visitantes.rows) {
         await actualizarVisitanteEvento({
@@ -426,7 +426,7 @@ async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
       }
 
       // intentar cerrar el registro
-      await actualizarSalida(n_salen, registroId, client);
+      await actualizarSalida(n_salen, registroId, client, "caseta");
 
       await client.query(`
         UPDATE registro
@@ -493,7 +493,7 @@ async function registrarSalidaCasetaParcial(registroId, visitanteIds = [], vehic
     }
 
     // 4️⃣ Verificar si ya todos salieron
-    const cerrado = await actualizarSalida(visitanteIds.length, registroId, client);
+    const cerrado = await actualizarSalida(visitanteIds.length, registroId, client, "caseta");
 
     return {
       ok: true,

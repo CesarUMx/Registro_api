@@ -18,7 +18,7 @@ async function validateTarjetaDisponible(n_tarjeta, client) {
   }
 
   //funcion para actualizar el numero de personas que salieron e intentar cerrar el registro
-  async function actualizarSalida(salen, registroId, client) {
+  async function actualizarSalida(salen, registroId, client, tip) {
 
     let cerrado = false;
 
@@ -55,10 +55,13 @@ async function validateTarjetaDisponible(n_tarjeta, client) {
     const { n_visitantes, n_salieron } = result.rows[0];
 
     if ((parseInt(n_visitantes) === parseInt(n_salieron)) && (parseInt(resVehiculos.rows[0].salieron) === parseInt(resVehiculos.rows[0].total))) {
+      // Determinar qué campo de hora actualizar según el tipo de salida
+      const campoHora = tip === 'edificio' ? 'hora_salida_edificio' : 'hora_salida_caseta';
+      
       await client.query(`
         UPDATE registro
         SET estatus = 'completo',
-        hora_salida_edificio = NOW()
+        ${campoHora} = NOW()
         WHERE id = $1
       `, [registroId]);
       cerrado = true;
