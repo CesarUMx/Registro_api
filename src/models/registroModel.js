@@ -272,8 +272,9 @@ async function buscarRegistroPorCodigo(code_registro) {
   };
 }
 
-async function salidaEdificio(registroId, visitantes, notas = '', userId, salida_vehiculo = false, completo = false) {
+async function salidaEdificio(registroId, visitantes, notas = '', userId, salida_vehiculo = false, completar_registro = false) {
   return withTransaction(async (client) => {
+    console.log("visitantes", visitantes);
     const resRegistro = await client.query(`
       SELECT id, tipo_r, estatus
       FROM registro
@@ -298,6 +299,8 @@ async function salidaEdificio(registroId, visitantes, notas = '', userId, salida
 
     for (const v of visitantes) {
       const visitanteId = v.id_visitante;
+      console.log("visitanteId", visitanteId);
+      console.log("registroId", registroId);
 
       const status_actual = await client.query(`
         SELECT estatus
@@ -334,7 +337,7 @@ async function salidaEdificio(registroId, visitantes, notas = '', userId, salida
       });
 
       // 2️⃣ Si no espera vehículo, ya terminó su proceso → marcar como completo
-      if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completo) {
+      if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completar_registro) {
         await client.query(`
           UPDATE registro_visitantes
           SET estatus = 'completo'
@@ -355,7 +358,7 @@ async function salidaEdificio(registroId, visitantes, notas = '', userId, salida
 
     // 4️⃣ Intentar cerrar el registro si ya salieron todos del edificio y NO esperan vehículo
     let cerrado = false;
-    if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completo) {
+    if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completar_registro) {
       cerrado = await actualizarSalida(visitantes.length, registroId, client, "edificio");
     }
 
@@ -449,58 +452,68 @@ async function salidaCaseta(registroId, idGuardia, notas, n_salen) {
   });
 }
 
-async function registrarSalidaCasetaParcial(registroId, visitanteIds = [], vehiculoId, notas, guardiaId) {
+async function registrarSalidaCasetaParcial(registroId, visitantes = [], vehiculoId = null, notas = '', guardiaId) {
   return withTransaction(async (client) => {
-    if (!Array.isArray(visitanteIds) || visitanteIds.length === 0) {
-      throw Object.assign(new Error('Debes enviar al menos un visitante'), {
+    // Validar que hay visitantes seleccionados
+    if (!Array.isArray(visitantes) || visitantes.length === 0) {
+      throw Object.assign(new Error('Debes seleccionar al menos un visitante para registrar salida'), {
         status: 400,
         code: 'SIN_VISITANTES'
       });
     }
 
-    if (!vehiculoId) {
-      throw Object.assign(new Error('Debes indicar el ID del vehículo que sale'), {
-        status: 400,
-        code: 'VEHICULO_FALTANTE'
-      });
-    }
-
     // 1️⃣ Registrar salida de visitantes
-    for (const id_visitante of visitanteIds) {
+    for (const visitante of visitantes) {
+      // Verificar que el objeto visitante tenga la propiedad id_visitante
+      if (!visitante || !visitante.id_visitante) {
+        console.warn('Objeto visitante inválido:', visitante);
+        continue; // Saltamos este visitante
+      }
+      
       await actualizarVisitanteEvento({
         registroId,
-        visitanteId: id_visitante,
+        visitanteId: visitante.id_visitante,
         evento: 'salida_caseta'
       });
     }
 
-    // 2️⃣ Registrar salida del vehículo
-    await client.query(`
-      UPDATE registro_vehiculos
-      SET hora_salida = NOW()
-      WHERE registro_id = $1 AND vehiculo_id = $2
-    `, [registroId, vehiculoId]);
-
-    // 3️⃣ Agregar nota (si viene)
-    if (notas && notas.trim() !== '') {
+    // 2️⃣ Registrar salida del vehículo (si se proporciona)
+    if (vehiculoId) {
       await client.query(`
-        UPDATE registro
-        SET notas = CONCAT(COALESCE(notas, ''), ' | Nota salida parcial: ', $1::text), 
-            id_guardia_caseta_salida = $3,
-            hora_salida_caseta = NOW()
-        WHERE id = $2
-      `, [notas.trim(), registroId, guardiaId]);
+        UPDATE registro_vehiculos
+        SET hora_salida = NOW()
+        WHERE registro_id = $1 AND vehiculo_id = $2
+      `, [registroId, vehiculoId]);
     }
 
+    // 3️⃣ Actualizar registro con notas y guardia
+    await client.query(`
+      UPDATE registro
+      SET 
+        notas = CASE WHEN $1 <> '' THEN CONCAT(COALESCE(notas, ''), ' | Nota salida parcial: ', $1::text) ELSE notas END,
+        id_guardia_caseta_salida = $3,
+        hora_salida_caseta = NOW()
+      WHERE id = $2
+    `, [notas.trim(), registroId, guardiaId]);
+
     // 4️⃣ Verificar si ya todos salieron
-    const cerrado = await actualizarSalida(visitanteIds.length, registroId, client, "caseta");
+    const cerrado = await actualizarSalida(visitantes.length, registroId, client, "caseta");
+
+    // Preparar mensaje de respuesta
+    let mensajeSalida = 'Salida parcial registrada';
+    if (visitantes.length > 0) {
+      mensajeSalida += ` (${visitantes.length} visitante(s))`;
+    }
+    if (vehiculoId) {
+      mensajeSalida += ' y vehículo';
+    }
 
     return {
       ok: true,
       cerrado,
       message: cerrado
         ? 'Registro finalizado: todos salieron por caseta'
-        : 'Salida parcial registrada (visitantes + vehículo)'
+        : mensajeSalida
     };
   });
 }
@@ -542,7 +555,14 @@ async function obtenerListadoRegistrosDataTable({ start, length, search, filtros
   params.push(length, start);
   const registros = await pool.query(`
       SELECT r.id, r.code_registro, r.edificio, r.n_visitantes,
-             u.name AS persona_a_visitar, r.estatus, r.tipo_r
+             u.name AS persona_a_visitar, r.estatus, r.tipo_r,
+             (
+               SELECT json_agg(json_build_object(
+                 'estatus', rv.estatus
+               ))
+               FROM registro_visitantes rv
+               WHERE rv.registro_id = r.id
+             ) AS visitantes
       FROM registro r
       LEFT JOIN users u ON u.id = r.id_persona_a_visitar
       ${where}

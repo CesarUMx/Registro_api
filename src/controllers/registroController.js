@@ -214,7 +214,7 @@ async function patchSalidaEdificio(req, res) {
     validateGuardType(req.user, ['entrada']);
 
     const registroId = parseInt(req.params.id);
-    const { visitantes, notas, salida_vehiculo = false, completo = false } = req.body;
+    const { visitantes, notas, salida_vehiculo = false, completar_registro = false } = req.body;
 
     if (!Array.isArray(visitantes) || visitantes.length === 0) {
       const error = new Error('Debes enviar al menos un visitante que salió');
@@ -229,7 +229,7 @@ async function patchSalidaEdificio(req, res) {
       notas,
       req.user.userId,
       salida_vehiculo,
-      completo
+      completar_registro
     );
 
     res.status(200).json({
@@ -353,6 +353,9 @@ async function patchAsociarVehiculo(req, res) {
 
 async function patchSalidaCasetaParcial(req, res) {
   try {
+    // Validar que sea un guardia de caseta
+    validateGuardType(req.user, ['caseta']);
+    
     const registroId = req.params.id;
     const { visitantes, vehiculo_id, notas } = req.body;
 
