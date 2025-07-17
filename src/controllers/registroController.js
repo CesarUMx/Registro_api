@@ -1,11 +1,12 @@
 const { crearRegistroYConductor, agregarVisitantesEdificio,
-  crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio,
+  crearRegistroPeatonal, buscarRegistroPorCodigo, salidaEdificio, obtenerVisitantesRegistro,
   salidaCaseta, obtenerListadoRegistrosDataTable, obtenerDetalleRegistro,
-  asociarVehiculoARegistro, nombreVisitante, registrarSalidaCasetaParcial
+  asociarVehiculoARegistro, nombreVisitante, registrarSalidaCasetaParcial,
+  cargarVisitantes, crearRegistroDesdeCodigoPersona
 } = require('../models/registroModel');
 const { checkRequiredFields, handleError, validateGuardType, validarCampos,
 } = require('../utils/controllerHelpers');
-const { getUserById } = require('../models/userManagementModel');
+const { getUserById, validarCodigoEmpleado, validarMatriculaAlumno } = require('../models/userManagementModel');
 const { enviarAlertaVisita } = require('../services/emailService');
 
 async function postRegistroEntradaCaseta(req, res) {
@@ -20,7 +21,6 @@ async function postRegistroEntradaCaseta(req, res) {
       n_visitantes,
       tag_type,
       n_tarjeta,
-      id_preregistro,
       num_marbete,
       motivo
     } = req.body;
@@ -45,7 +45,6 @@ async function postRegistroEntradaCaseta(req, res) {
       idGuardiaCaseta: req.user.userId,
       tagType: tag_type,
       nTarjeta: n_tarjeta || null,
-      idPreregistro: id_preregistro || null,
       numMarbete: num_marbete,
       motivo: motivo
     });
@@ -57,6 +56,29 @@ async function postRegistroEntradaCaseta(req, res) {
     });
   } catch (error) {
     handleError(res, error);
+  }
+}
+
+// Obtener los visitantes de un registro específico
+async function getVisitantesByRegistroId(req, res) {
+  try {
+    const registroId = parseInt(req.params.id);
+    if (!registroId) {
+      return res.status(400).json({ ok: false, error: 'ID de registro inválido' });
+    }
+
+    const visitantes = await obtenerVisitantesRegistro(registroId);
+    
+    return res.status(200).json({
+      ok: true,
+      visitantes
+    });
+  } catch (error) {
+    console.error('Error al obtener visitantes del registro:', error);
+    return res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error al obtener visitantes del registro'
+    });
   }
 }
 
@@ -125,60 +147,40 @@ async function patchEntradaEdificio(req, res) {
 
 async function postEntradaPeatonal(req, res) {
   try {
-    validateGuardType(req.user, ['entrada']);
+    validateGuardType(req.user, ['caseta']);
 
-    const { visitantes, edificio, motivo } = req.body;
-    const idPersonaVisitar = parseInt(req.body.id_persona_a_visitar);
+    const { visitantes, destino } = req.body;
 
-    await validarCampos(edificio, idPersonaVisitar, motivo, visitantes);
+    // Validar que haya visitantes
+    if (!visitantes || !Array.isArray(visitantes) || visitantes.length === 0) {
+      const error = new Error('Se requiere al menos un visitante');
+      error.status = 400;
+      throw error;
+    }
+
+    // Validar que cada visitante tenga un id_visitante
+    for (const visitante of visitantes) {
+      if (!visitante.id_visitante) {
+        const error = new Error('Todos los visitantes deben tener un id_visitante');
+        error.status = 400;
+        throw error;
+      }
+    }
+    
+    // Validar el destino
+    if (!destino || (destino !== 'edificio' && destino !== 'cafeteria')) {
+      const error = new Error('El destino debe ser "edificio" o "cafeteria"');
+      error.status = 400;
+      throw error;
+    }
 
     const resultado = await crearRegistroPeatonal({
       visitantes,
-      edificio,
-      motivo,
-      idPersonaVisitar: idPersonaVisitar || null,
-      idGuardiaEntrada: req.user.userId
+      idGuardiaCaseta: req.user.userId,
+      destino
     });
 
-    // Enviar correo electrónico a la persona a visitar si existe
-    if (idPersonaVisitar) {
-      try {
-        // Obtener información de la persona a visitar
-        const personaAVisitar = await getUserById(idPersonaVisitar);
-
-        if (personaAVisitar && personaAVisitar.email) {
-          // Preparar la lista de nombres de visitantes
-          const nombresVisitantes = [];
-
-          if (visitantes && visitantes.length > 0) {
-            // Recorrer todos los visitantes y obtener sus nombres
-            for (const visitante of visitantes) {
-              nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
-            }
-          }
-
-          // Si no se encontraron nombres, añadir un mensaje genérico
-          if (nombresVisitantes.length === 0) {
-            nombresVisitantes.push('Visitante no especificado');
-          }
-
-          // Enviar correo electrónico de alerta con todos los visitantes
-          await enviarAlertaVisita(
-            personaAVisitar.email,
-            personaAVisitar.name,
-            nombresVisitantes,
-            edificio,
-            motivo,
-            resultado.code_registro
-          );
-
-          console.log(`Correo de alerta enviado a ${personaAVisitar.email} con ${nombresVisitantes.length} visitantes`);
-        }
-      } catch (emailError) {
-        // No interrumpimos el flujo principal si hay un error en el envío del correo
-        console.error('Error al enviar correo de alerta:', emailError);
-      }
-    }
+    // No se envía correo electrónico ya que no hay persona a visitar
 
     res.status(201).json({
       ok: true,
@@ -337,7 +339,62 @@ async function patchAsociarVehiculo(req, res) {
       });
     }
 
-    const resultado = await asociarVehiculoARegistro(code_registro, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta, num_marbete);
+    let resultado;
+    const codigo = code_registro.toUpperCase();
+    
+    // Determinar el tipo de código
+    if (codigo.startsWith('UMX')) {
+      // Es un código de registro normal
+      resultado = await asociarVehiculoARegistro(codigo, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta, num_marbete);
+    } else if (/^\d+$/.test(codigo)) {
+      // Es un código numérico, podría ser código de empleado o matrícula de alumno
+      
+      // Primero verificamos si es un código de empleado
+      const resultadoEmpleado = await validarCodigoEmpleado(codigo);
+      
+      if (resultadoEmpleado.valido) {
+        // Es un código de empleado válido
+        resultado = await crearRegistroDesdeCodigoPersona({
+          datosPersona: resultadoEmpleado,
+          tipoPersona: 'empleado',
+          vehiculoId: id_vehiculo,
+          visitanteId: id_visitante,
+          guardiaId: req.user.userId,
+          tagType: tag_type,
+          nTarjeta: n_tarjeta,
+          numMarbete: num_marbete
+        });
+      } else {
+        // Verificamos si es una matrícula de alumno
+        const resultadoAlumno = await validarMatriculaAlumno(codigo);
+        
+        if (resultadoAlumno.valido) {
+          // Es una matrícula de alumno válida
+          resultado = await crearRegistroDesdeCodigoPersona({
+            datosPersona: resultadoAlumno,
+            tipoPersona: 'alumno',
+            vehiculoId: id_vehiculo,
+            visitanteId: id_visitante,
+            guardiaId: req.user.userId,
+            tagType: tag_type,
+            nTarjeta: n_tarjeta,
+            numMarbete: num_marbete
+          });
+        } else {
+          // No es un código válido
+          return res.status(400).json({
+            ok: false,
+            error: 'El código ingresado no es válido. No se encontró registro, empleado o alumno con ese código.'
+          });
+        }
+      }
+    } else {
+      // No es un formato de código reconocido
+      return res.status(400).json({
+        ok: false,
+        error: 'Formato de código no reconocido. Debe ser un código de registro (UMX...) o un código numérico.'
+      });
+    }
 
     res.status(200).json({ 
       ok: true, 
@@ -399,16 +456,55 @@ async function getRegistroPublico(req, res) {
   }
 }
 
+async function patchCargarVisitantes(req, res) {
+  try {
+    // Validar que sea guardia de tipo 'caseta'
+    validateGuardType(req.user, ['caseta']);
+
+    const registroId = parseInt(req.params.id);
+    const { visitantes } = req.body;
+
+    // Validar que haya visitantes
+    if (!visitantes || !Array.isArray(visitantes) || visitantes.length === 0) {
+      const error = new Error('Se requiere al menos un visitante');
+      error.status = 400;
+      throw error;
+    }
+
+    // Validar que cada visitante tenga un id_visitante
+    for (const visitante of visitantes) {
+      if (!visitante.id_visitante) {
+        const error = new Error('Todos los visitantes deben tener un id_visitante');
+        error.status = 400;
+        throw error;
+      }
+    }
+
+    const resultado = await cargarVisitantes(registroId, visitantes, req.user.userId);
+
+    res.status(200).json({
+      ok: true,
+      ...resultado
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+
+
 module.exports = {
   postRegistroEntradaCaseta,
   patchEntradaEdificio,
-  postEntradaPeatonal,
-  getRegistroPorCodigo,
   patchSalidaEdificio,
-  patchSalidaCaseta,
   getRegistrosListado,
   getRegistroDetalle,
+  getVisitantesByRegistroId,
+  postEntradaPeatonal,
   patchAsociarVehiculo,
+  patchSalidaCasetaParcial,
   getRegistroPublico,
-  patchSalidaCasetaParcial
+  patchCargarVisitantes,
+  getRegistroPorCodigo,
+  patchSalidaCaseta
 };
