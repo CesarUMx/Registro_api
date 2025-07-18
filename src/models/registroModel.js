@@ -20,7 +20,7 @@ async function crearRegistroYConductor({
   numMarbete,
   motivo
 }) {
-  
+
   return withTransaction(async (client) => {
     // Determinar tipo de registro
     let tipo_r = 'completo';
@@ -90,7 +90,7 @@ async function crearRegistroYConductor({
 }
 
 async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrada, edificio, idPersonaVisitar = null, motivo = null) {
-  
+
   return withTransaction(async (client) => {
     const { rows } = await client.query(`SELECT * FROM registro WHERE id = $1`, [registroId]);
     if (rows.length === 0) {
@@ -105,7 +105,7 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
         `SELECT * FROM registro_visitantes WHERE registro_id = $1 AND id_visitante = $2`,
         [registroId, v.id_visitante]
       );
-      
+
       if (visitanteRows.length === 0) {
         throw Object.assign(new Error(`El visitante con ID ${v.id_visitante} no está registrado en este registro`), {
           status: 400,
@@ -136,17 +136,17 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
         `SELECT codigo FROM registro_visitantes WHERE registro_id = $1 AND id_visitante = $2`,
         [registroId, v.id_visitante]
       );
-      
+
       if (visitanteActual.length === 0) {
         throw Object.assign(new Error(`El visitante con ID ${v.id_visitante} no está registrado en este registro`), {
           status: 400,
           code: 'VISITOR_NOT_FOUND'
         });
       }
-      
+
       // Guardar el código para devolverlo en la respuesta
       codigos.push({ id_visitante: v.id_visitante, codigo: visitanteActual[0].codigo });
-      
+
       // Actualizar el registro del visitante
       await client.query(
         `UPDATE registro_visitantes
@@ -216,7 +216,7 @@ async function crearRegistroPeatonal({ visitantes, idGuardiaCaseta, destino = 'e
 
       // Determinar el estatus según el destino
       const estatus = destino === 'edificio' ? 'en caseta' : 'cafeteria';
-      
+
       await client.query(
         `INSERT INTO registro_visitantes (
            registro_id,
@@ -276,9 +276,8 @@ async function buscarRegistroPorCodigo(code_registro) {
   };
 }
 
-async function salidaEdificio(registroId, visitantes, notas = '', userId, salida_vehiculo = false, completar_registro = false) {
+async function salidaEdificio(registroId, visitantes, notas = '', userId, salida_vehiculo = false) {
   return withTransaction(async (client) => {
-    console.log("visitantes", visitantes);
     const resRegistro = await client.query(`
       SELECT id, tipo_r, estatus
       FROM registro
@@ -303,9 +302,6 @@ async function salidaEdificio(registroId, visitantes, notas = '', userId, salida
 
     for (const v of visitantes) {
       const visitanteId = v.id_visitante;
-      console.log("visitanteId", visitanteId);
-      console.log("registroId", registroId);
-
       const status_actual = await client.query(`
         SELECT estatus
         FROM registro_visitantes
@@ -339,38 +335,22 @@ async function salidaEdificio(registroId, visitantes, notas = '', userId, salida
         evento: 'salida_edificio',
         estatus: nuevoEstatus
       });
-
-      // 2️⃣ Si no espera vehículo, ya terminó su proceso → marcar como completo
-      if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completar_registro) {
-        await client.query(`
-          UPDATE registro_visitantes
-          SET estatus = 'completo'
-          WHERE registro_id = $1 AND id_visitante = $2
-        `, [registroId, visitanteId]);
-      }
     }
 
-    // 3️⃣ Agregar nota al registro
+    // 2️⃣ Agregar nota al registro
     if (notas && notas.trim() !== '') {
       await client.query(`
         UPDATE registro
         SET notas = CONCAT(COALESCE(notas, ''), ' | Notas edificio: ', $1::text),
-            id_guardia_edificio_salida = $2
+            id_guardia_edificio_salida = $2,
+            hora_salida_edificio = NOW()
         WHERE id = $3
       `, [notas, userId, registroId]);
     }
 
-    // 4️⃣ Intentar cerrar el registro si ya salieron todos del edificio y NO esperan vehículo
-    let cerrado = false;
-    if ((!salida_vehiculo && registro.tipo_r === 'peatonal') || completar_registro) {
-      cerrado = await actualizarSalida(visitantes.length, registroId, client, "edificio");
-    }
-
     return {
       ok: true,
-      message: cerrado
-        ? 'Registro finalizado correctamente'
-        : `Salida registrada para ${visitantes.length} visitante(s)`
+      message: `Salida registrada para ${visitantes.length} visitante(s)`
     };
   });
 }
@@ -473,7 +453,7 @@ async function registrarSalidaCasetaParcial(registroId, visitantes = [], vehicul
         console.warn('Objeto visitante inválido:', visitante);
         continue; // Saltamos este visitante
       }
-      
+
       await actualizarVisitanteEvento({
         registroId,
         visitanteId: visitante.id_visitante,
@@ -826,7 +806,7 @@ async function obtenerVisitantesRegistro(registroId) {
       WHERE rv.registro_id = $1
       ORDER BY rv.id
     `;
-    
+
     const result = await pool.query(query, [registroId]);
     return result.rows;
   } catch (error) {
@@ -848,7 +828,7 @@ async function crearRegistroDesdeCodigoPersona({
 }) {
   return withTransaction(async (client) => {
     let motivo, idPersonaAVisitar = null;
-    
+
     // Determinar los valores según el tipo de persona
     if (tipoPersona === 'empleado') {
       motivo = 'Recojer o dejar a empleado';
@@ -856,7 +836,7 @@ async function crearRegistroDesdeCodigoPersona({
     } else if (tipoPersona === 'alumno') {
       motivo = `Recoger alumno ${datosPersona.alumno.nombre} con matrícula ${datosPersona.alumno.matricula}`;
     }
-    
+
     // Insertar registro principal
     const result = await client.query(
       `INSERT INTO registro (
@@ -870,7 +850,7 @@ async function crearRegistroDesdeCodigoPersona({
        ) VALUES ($1, NOW(), $2, 'iniciado', $3, $4, $5)
        RETURNING id`,
       [
-        guardiaId, 
+        guardiaId,
         1, // Un solo visitante
         'proveedor', // Tipo de registro
         motivo,
@@ -920,19 +900,140 @@ async function crearRegistroDesdeCodigoPersona({
   });
 }
 
+/**
+ * Obtiene todos los visitantes que salieron del edificio hace más de X minutos pero no han salido por caseta
+ * @param {number} minutos - Tiempo en minutos para considerar como demora
+ * @returns {Promise<Array>} - Arreglo con los registros de visitantes demorados
+ */
+async function obtenerVisitantesDemoradosSinSalirCaseta(minutos = 10) {
+  return withTransaction(async (client) => {
+    // Consulta para obtener visitantes que salieron del edificio hace más de X minutos pero no han salido por caseta
+    const query = `
+      SELECT 
+        r.id AS registro_id,
+        rv.id AS registro_id_visitante,
+        r.code_registro,
+        r.edificio,
+        v.nombre AS nombre_visitante,
+        rv.hora_salida_edificio,
+        COALESCE(rv.contador_alertas, 0) AS contador_alertas,
+        EXTRACT(EPOCH FROM (NOW() - rv.hora_salida_edificio))/60 AS minutos_desde_salida
+      FROM 
+        registro_visitantes rv
+      JOIN 
+        registro r ON rv.registro_id = r.id
+      JOIN 
+        visitantes v ON rv.id_visitante = v.id
+      LEFT JOIN 
+        users u ON r.id_persona_a_visitar = u.id
+      WHERE 
+        rv.hora_salida_edificio IS NOT NULL
+        AND rv.hora_salida_caseta IS NULL
+        AND rv.estatus = 'salio del edificio'
+        AND EXTRACT(EPOCH FROM (NOW() - rv.hora_salida_edificio))/60 > $1
+      ORDER BY 
+        rv.hora_salida_edificio ASC
+    `;
+
+    const result = await client.query(query, [minutos]);
+
+    // Agrupar los resultados por registro para facilitar el procesamiento, pero mandando a los visitantes y los minutos de demora en n array
+    const registrosMap = new Map();
+
+    for (const row of result.rows) {
+      const registroId = row.registro_id;
+
+      if (!registrosMap.has(registroId)) {
+        registrosMap.set(registroId, {
+          registro_id: registroId,
+          code_registro: row.code_registro,
+          edificio: row.edificio || 'No especificado',
+          visitantes: []
+        });
+      }
+
+      registrosMap.get(registroId).visitantes.push({
+        id_visitante: row.registro_id_visitante,
+        nombre: row.nombre_visitante,
+        minutos_desde_salida: Math.floor(row.minutos_desde_salida),
+        contador_alertas: row.contador_alertas || 0
+      });
+    }
+
+    return Array.from(registrosMap.values());
+  });
+}
+
+/**
+ * Incrementa el contador de alertas para los visitantes demorados
+ * @param {number[]} registroIds - IDs de los registros a incrementar el contador
+ * @returns {Promise<boolean>} - True si se actualizaron correctamente
+ */
+async function incrementarContadorAlertas(registroIds) {
+  if (!registroIds || registroIds.length === 0) {
+    return false;
+  }
+
+  return withTransaction(async (client) => {
+    try {
+      for (const registroId of registroIds) {
+        await client.query('BEGIN');
+
+        const contadorActual = await client.query(
+          `SELECT contador_alertas FROM registro_visitantes WHERE id = $1 FOR UPDATE`,
+          [registroId]
+        );
+
+        const contador = (contadorActual.rows[0].contador_alertas || 0) + 1;
+
+        const result = await client.query(`
+          UPDATE registro_visitantes
+          SET contador_alertas = $1
+          WHERE id = $2
+          RETURNING id, contador_alertas
+        `, [contador, registroId]);
+
+        await client.query('COMMIT');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error al incrementar contador de alertas:', error);
+      return false;
+    }
+
+  });
+}
+
+/**
+ * Marca los visitantes de un registro como alertados para evitar enviar múltiples alertas
+ * Esta función es un alias de incrementarContadorAlertas para mantener compatibilidad
+ * @param {number[]} registroIds - IDs de los registros a marcar como alertados
+ * @returns {Promise<boolean>} - True si se actualizaron correctamente
+ */
+async function marcarVisitantesComoAlertados(registroIds) {
+  return incrementarContadorAlertas(registroIds);
+}
+
 module.exports = {
   crearRegistroYConductor,
   agregarVisitantesEdificio,
   crearRegistroPeatonal,
   buscarRegistroPorCodigo,
   salidaEdificio,
-  obtenerVisitantesRegistro,
   salidaCaseta,
+  registrarSalidaCasetaParcial,
   obtenerListadoRegistrosDataTable,
   obtenerDetalleRegistro,
   asociarVehiculoARegistro,
   nombreVisitante,
-  registrarSalidaCasetaParcial,
+  actualizarVisitanteEvento,
   cargarVisitantes,
-  crearRegistroDesdeCodigoPersona
+  obtenerVisitantesRegistro,
+  crearRegistroDesdeCodigoPersona,
+  obtenerVisitantesDemoradosSinSalirCaseta,
+  incrementarContadorAlertas,
+  marcarVisitantesComoAlertados
 };

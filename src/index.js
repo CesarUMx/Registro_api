@@ -12,6 +12,8 @@ const vehiculoRouter = require('./routes/vehiculoRoutes');
 const visitanteRouter = require('./routes/visitanteRoutes');
 const registroRouter = require('./routes/registroRoutes');
 const capturaRouter = require('./routes/capturaRoutes');
+// Importar el programador de alertas de demora
+const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 
 // Configuración CORS
 app.use(cors({
@@ -70,6 +72,16 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
+  
+  // Iniciar el programador de alertas de demora
+  // Como ahora es una función asíncrona, usamos await para esperar a que termine
+  console.log('Iniciando programador de alertas de demora...');
+  try {
+    await iniciarProgramadorAlertasDemora();
+    console.log('Programador de alertas de demora iniciado correctamente');
+  } catch (error) {
+    console.error('Error al iniciar el programador de alertas de demora:', error);
+  }
 });

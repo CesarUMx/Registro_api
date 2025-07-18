@@ -243,7 +243,6 @@ async function validarCodigoEmpleado(codigo) {
 // Función para validar matrícula de alumno usando la API académica
 async function validarMatriculaAlumno(matricula) {
   try {
-    console.log('Validando matrícula de alumno:', matricula);
     const axios = require('axios');
     
     // Configuración de la petición a la API
@@ -261,7 +260,6 @@ async function validarMatriculaAlumno(matricula) {
     
     // Verificar si la respuesta es exitosa y contiene datos
     if (response.data.resultado.exito) {
-      console.log('Respuesta de la API:', response.data.informacion);
       // Si hay datos de estudiante, extraer la información necesaria
       const estudiante = response.data.informacion && response.data.informacion.length > 0 
         ? response.data.informacion[0] 

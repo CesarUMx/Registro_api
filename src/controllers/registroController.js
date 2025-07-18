@@ -7,7 +7,7 @@ const { crearRegistroYConductor, agregarVisitantesEdificio,
 const { checkRequiredFields, handleError, validateGuardType, validarCampos,
 } = require('../utils/controllerHelpers');
 const { getUserById, validarCodigoEmpleado, validarMatriculaAlumno } = require('../models/userManagementModel');
-const { enviarAlertaVisita } = require('../services/emailService');
+const { enviarAlertaVisita, enviarNotificacionSalida } = require('../services/emailService');
 
 async function postRegistroEntradaCaseta(req, res) {
   try {
@@ -35,8 +35,6 @@ async function postRegistroEntradaCaseta(req, res) {
       error.code = 'MISSING_TARJETA';
       throw error;
     }
-    console.log("id_vehiculo", id_vehiculo);
-
     const resultado = await crearRegistroYConductor({
       vehiculo_id: id_vehiculo,
       idVisitanteConductor: id_visitante_conductor,
@@ -127,8 +125,6 @@ async function patchEntradaEdificio(req, res) {
             motivo,
             resultado.code_registro || `Registro #${registroId}`
           );
-
-          console.log(`Correo de alerta enviado a ${personaAVisitar.email} con ${nombresVisitantes.length} visitantes`);
         }
       } catch (emailError) {
         // No interrumpimos el flujo principal si hay un error en el envío del correo
@@ -216,7 +212,7 @@ async function patchSalidaEdificio(req, res) {
     validateGuardType(req.user, ['entrada']);
 
     const registroId = parseInt(req.params.id);
-    const { visitantes, notas, salida_vehiculo = false, completar_registro = false } = req.body;
+    const { visitantes, notas, salida_vehiculo = false } = req.body;
 
     if (!Array.isArray(visitantes) || visitantes.length === 0) {
       const error = new Error('Debes enviar al menos un visitante que salió');
@@ -225,14 +221,55 @@ async function patchSalidaEdificio(req, res) {
       throw error;
     }
 
+    // Obtener los detalles del registro antes de procesar la salida
+    const detalleRegistro = await obtenerDetalleRegistro(registroId);
+    
     const resultado = await salidaEdificio(
       registroId,
       visitantes,
       notas,
       req.user.userId,
       salida_vehiculo,
-      completar_registro
     );
+
+    // Enviar notificación de salida por correo si hay una persona a visitar
+    if (detalleRegistro && detalleRegistro.id_persona_a_visitar) {
+      try {
+        // Obtener información de la persona visitada
+        const personaVisitada = await getUserById(detalleRegistro.id_persona_a_visitar);
+        
+        if (personaVisitada && personaVisitada.email) {
+          // Preparar la lista de nombres de visitantes que salieron
+          const nombresVisitantes = [];
+          
+          if (visitantes && visitantes.length > 0) {
+            // Recorrer todos los visitantes y obtener sus nombres
+            for (const visitante of visitantes) {
+              nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
+            }
+          }
+          
+          // Si no se encontraron nombres, añadir un mensaje genérico
+          if (nombresVisitantes.length === 0) {
+            nombresVisitantes.push('Visitante no especificado');
+          }
+          
+          // Enviar correo electrónico de notificación de salida
+          await enviarNotificacionSalida(
+            personaVisitada.email,
+            personaVisitada.name,
+            nombresVisitantes,
+            detalleRegistro.edificio || 'No especificado',
+            detalleRegistro.code_registro || `Registro #${registroId}`,
+            notas,
+            'l edificio'
+          );
+        }
+      } catch (emailError) {
+        // No interrumpimos el flujo principal si hay un error en el envío del correo
+        console.error('Error al enviar correo de notificación de salida:', emailError);
+      }
+    }
 
     res.status(200).json({
       ok: true,
@@ -261,9 +298,57 @@ async function patchSalidaCaseta(req, res) {
       error.status = 400;
       throw error;
     }
-
-    console.log("salieronC", salieron);
+    
+    // Obtener los detalles del registro antes de procesar la salida
+    const detalleRegistro = await obtenerDetalleRegistro(registroId);
+    
     const resultado = await salidaCaseta(registroId, req.user.userId, notas, salieron);
+    
+    // Enviar notificación de salida por correo si hay una persona a visitar
+    if (detalleRegistro && detalleRegistro.id_persona_a_visitar) {
+      try {
+        // Obtener información de la persona visitada
+        const personaVisitada = await getUserById(detalleRegistro.id_persona_a_visitar);
+        
+        if (personaVisitada && personaVisitada.email) {
+          // Obtener los visitantes del registro
+          const visitantesInfo = await obtenerVisitantesRegistro(registroId);
+          
+          // Filtrar solo los visitantes que han salido completamente
+          const visitantesSalieron = visitantesInfo.filter(v => 
+            v.hora_salida_caseta !== null && v.estatus === 'completo'
+          );
+          
+          // Preparar la lista de nombres de visitantes que salieron
+          const nombresVisitantes = [];
+          
+          if (visitantesSalieron && visitantesSalieron.length > 0) {
+            // Recorrer todos los visitantes y obtener sus nombres
+            for (const visitante of visitantesSalieron) {
+              nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
+            }
+          }
+          
+          // Si no se encontraron nombres, añadir un mensaje genérico
+          if (nombresVisitantes.length === 0) {
+            nombresVisitantes.push('Visitante no especificado');
+          }
+          
+          // Enviar correo electrónico de notificación de salida
+          await enviarNotificacionSalida(
+            personaVisitada.email,
+            personaVisitada.name,
+            nombresVisitantes,
+            detalleRegistro.edificio || 'No especificado',
+            detalleRegistro.code_registro || `Registro #${registroId}`,
+            notas
+          );
+        }
+      } catch (emailError) {
+        // No interrumpimos el flujo principal si hay un error en el envío del correo
+        console.error('Error al enviar correo de notificación de salida:', emailError);
+      }
+    }
 
     res.status(200).json({
       ok: true,
@@ -416,6 +501,9 @@ async function patchSalidaCasetaParcial(req, res) {
     const registroId = req.params.id;
     const { visitantes, vehiculo_id, notas } = req.body;
 
+    // Obtener los detalles del registro antes de procesar la salida
+    const detalleRegistro = await obtenerDetalleRegistro(registroId);
+
     const resultado = await registrarSalidaCasetaParcial(
       registroId,
       visitantes,
@@ -423,6 +511,47 @@ async function patchSalidaCasetaParcial(req, res) {
       notas,
       req.user.id
     );
+    console.log(resultado);
+
+    // Enviar notificación de salida parcial por correo si hay una persona a visitar
+    if (resultado.ok) {
+      try {
+        // Obtener información de la persona visitada
+        const personaVisitada = await getUserById(detalleRegistro.id_persona_a_visitar);
+        console.log(personaVisitada);
+        
+        if (personaVisitada && personaVisitada.email) {
+          console.log(personaVisitada.email);
+          // Preparar la lista de nombres de visitantes que salieron
+          const nombresVisitantes = [];
+          
+          // Obtener los nombres de los visitantes que salieron parcialmente
+          for (const visitanteId of visitantes) {
+            nombresVisitantes.push(await nombreVisitante(visitanteId.id_visitante));
+          }
+          
+          // Si no se encontraron nombres, añadir un mensaje genérico
+          if (nombresVisitantes.length === 0) {
+            nombresVisitantes.push('Visitante no especificado');
+          }
+          console.log(nombresVisitantes);
+          
+          // Enviar correo electrónico de notificación de salida
+          await enviarNotificacionSalida(
+            personaVisitada.email,
+            personaVisitada.name,
+            nombresVisitantes,
+            detalleRegistro.edificio || 'No especificado',
+            detalleRegistro.code_registro || `Registro #${registroId}`,
+            notas || 'Salida de caseta',
+            ' la caseta'
+          );
+        }
+      } catch (emailError) {
+        // No interrumpimos el flujo principal si hay un error en el envío del correo
+        console.error('Error al enviar correo de notificación de salida parcial:', emailError);
+      }
+    }
 
     res.status(200).json({
       ok: true,
