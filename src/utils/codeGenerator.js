@@ -45,6 +45,24 @@ function generateVisitorTag(registrationCode, visitorNumber) {
 }
 
 /**
+ * Genera un código único para preregistro
+ * @param {number} preregistroId - ID del preregistro
+ * @returns {string} Código en formato PRE+ID+3letras (similar al de registro)
+ */
+function generatePreregistroCode(preregistroId) {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let randomLetters = '';
+  
+  for (let i = 0; i < 3; i++) {
+    randomLetters += letters.charAt(Math.floor(Math.random() * letters.length));
+  }
+  
+  return `PRE${preregistroId}${randomLetters}`;
+}
+
+
+
+/**
  * Normaliza un texto eliminando acentos y convirtiéndolo a mayúsculas
  * @param {string} text - Texto a normalizar
  * @returns {string} Texto normalizado
@@ -62,6 +80,7 @@ module.exports = {
   generateRegistrationCode,
   generateDriverTag,
   generateVisitorTag,
+  generatePreregistroCode,
   normalizeText,
   generateSpecialTag
 };

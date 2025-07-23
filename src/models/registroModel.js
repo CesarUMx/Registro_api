@@ -240,40 +240,76 @@ async function crearRegistroPeatonal({ visitantes, idGuardiaCaseta, destino = 'e
 }
 
 async function buscarRegistroPorCodigo(code_registro) {
-  const { rows } = await pool.query(
-    `SELECT * FROM registro WHERE code_registro = $1`,
-    [code_registro]
-  );
+  return withTransaction(async (client) => {
+    // Obtener información principal del registro
+    const resRegistro = await client.query(`
+      SELECT r.id, r.tipo_r, r.estatus, r.code_registro, r.notas,
+             r.hora_entrada_caseta, r.hora_salida_caseta,
+             r.hora_entrada_edificio, r.hora_salida_edificio,
+             r.n_visitantes, r.n_salieron, r.edificio, r.motivo,
+             r.id_persona_a_visitar, u.name AS persona_a_visitar,
+             r.fecha_create, r.fecha_update
+      FROM registro r
+      LEFT JOIN users u ON u.id = r.id_persona_a_visitar
+      WHERE r.code_registro = $1
+    `, [code_registro]);
 
-  if (rows.length === 0) {
-    const error = new Error('Registro no encontrado');
-    error.status = 404;
-    error.code = 'REGISTRO_NO_ENCONTRADO';
-    throw error;
-  }
+    if (resRegistro.rows.length === 0) {
+      const error = new Error('Registro no encontrado');
+      error.status = 404;
+      error.code = 'REGISTRO_NO_ENCONTRADO';
+      throw error;
+    }
 
-  const registro = rows[0];
+    const registro = resRegistro.rows[0];
 
-  // Consultar visitantes excluyendo al conductor
-  const { rows: visitantes } = await pool.query(
-    `SELECT rv.id, rv.id_visitante, rv.codigo, v.nombre
-       FROM registro_visitantes rv
-       JOIN visitantes v ON v.id = rv.id_visitante
-       WHERE rv.registro_id = $1
-         AND rv.codigo ~ '-[VP][0-9]{2}$'`,
-    [registro.id]
-  );
+    // Obtener todos los visitantes con información completa y estatus
+    const resVisitantes = await client.query(`
+      SELECT rv.id as registro_visitante_id,
+             rv.id_visitante,
+             rv.codigo,
+             rv.hora_entrada_caseta,
+             rv.hora_salida_caseta,
+             rv.hora_entrada_edificio,
+             rv.hora_salida_edificio,
+             rv.estatus,
+             rv.n_tarjeta,
+             rv.tag_type,
+             v.nombre,
+             v.tipo,
+             v.empresa,
+             v.telefono,
+             v.foto_persona,
+             v.foto_ine
+      FROM registro_visitantes rv
+      INNER JOIN visitantes v ON rv.id_visitante = v.id
+      WHERE rv.registro_id = $1
+      ORDER BY rv.codigo
+    `, [registro.id]);
 
-  const tipo = registro.id_vehiculo ? 'vehicular' : 'peatonal';
+    // Obtener todos los vehículos asociados
+    const resVehiculos = await client.query(`
+      SELECT rv.vehiculo_id AS id,
+             rv.hora_entrada,
+             rv.hora_salida,
+             rv.num_marbete,
+             v.placa,
+             v.foto_placa
+      FROM registro_vehiculos rv
+      INNER JOIN vehiculos v ON rv.vehiculo_id = v.id
+      WHERE rv.registro_id = $1
+    `, [registro.id]);
 
-  return {
-    id: registro.id,
-    code_registro: registro.code_registro,
-    estatus: registro.estatus,
-    tipo,
-    n_visitantes: registro.n_visitantes,
-    visitantes
-  };
+    // Determinar el tipo de registro
+    const tipo = resVehiculos.rows.length > 0 ? 'vehicular' : 'peatonal';
+
+    return {
+      ...registro,
+      tipo,
+      visitantes: resVisitantes.rows,
+      vehiculos: resVehiculos.rows
+    };
+  });
 }
 
 async function salidaEdificio(registroId, visitantes, notas = '', userId, salida_vehiculo = false) {

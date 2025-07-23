@@ -12,6 +12,7 @@ const vehiculoRouter = require('./routes/vehiculoRoutes');
 const visitanteRouter = require('./routes/visitanteRoutes');
 const registroRouter = require('./routes/registroRoutes');
 const capturaRouter = require('./routes/capturaRoutes');
+const preregistroRouter = require('./routes/preregistroRoutes');
 // Importar el programador de alertas de demora
 const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 
@@ -63,6 +64,7 @@ app.use('/api/users', userManagementRouter);
 app.use('/api/vehiculos', vehiculoRouter);
 app.use('/api/visitantes', visitanteRouter);
 app.use('/api/registro', registroRouter);
+app.use('/api/preregistros', preregistroRouter);
 // Para cualquier ruta no definida:
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta no encontrada' });

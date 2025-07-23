@@ -21,7 +21,7 @@ const {
 
       checkRequiredFields(['nombre', 'tipo'], req.body);
 
-      if (tipo !== 'menor de edad') {
+      if (tipo !== 'menor de edad' && tipo !== 'preregistro') {
         if (!foto_persona || !foto_ine) {
           throw Object.assign(new Error('foto_persona y foto_ine son obligatorias para este tipo de visitante'), {
             status: 400,

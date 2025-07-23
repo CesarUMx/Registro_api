@@ -569,12 +569,12 @@ async function patchSalidaCasetaParcial(req, res) {
 // Función para obtener detalles de un registro públicamente por código
 async function getRegistroPublico(req, res) {
   try {
-    const { id } = req.params;
-    const resultado = await obtenerDetalleRegistro(id);
+    const { codigo } = req.params;
+    const resultado = await buscarRegistroPorCodigo(codigo);
 
     res.status(200).json({
       ok: true,
-      data: resultado // misma estructura pública
+      data: resultado
     });
   } catch (error) {
     console.error('Error en getRegistroPublico:', error);
