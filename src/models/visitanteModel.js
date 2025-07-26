@@ -77,10 +77,57 @@ async function deleteVisitante(id) {
   }
   
 
+/**
+ * Crear o buscar visitante (para preregistros públicos)
+ */
+async function crearOBuscarVisitante(visitanteData) {
+  const { nombre, telefono, empresa } = visitanteData;
+  
+  // Buscar si ya existe por nombre (normalizado)
+  const normalizado = normalizeName(nombre);
+  const visitantesExistentes = await searchVisitantes(normalizado);
+  
+  if (visitantesExistentes.length > 0) {
+    // Si existe, tomar el primero y actualizar datos si es necesario
+    const visitanteExistente = visitantesExistentes[0];
+    const camposActualizar = {};
+    
+    if (telefono && telefono !== visitanteExistente.telefono) {
+      camposActualizar.telefono = telefono;
+    }
+    if (empresa && empresa !== visitanteExistente.empresa) {
+      camposActualizar.empresa = empresa;
+    }
+    
+    if (Object.keys(camposActualizar).length > 0) {
+      await updateVisitante(visitanteExistente.id, camposActualizar);
+      return { ...visitanteExistente, ...camposActualizar };
+    }
+    
+    return visitanteExistente;
+  }
+  
+  // Si no existe, crear nuevo visitante
+  const result = await pool.query(
+    `INSERT INTO visitantes (nombre, tipo, telefono, empresa)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [
+      nombre,
+      visitanteData.tipo || 'externo',
+      telefono || '',
+      empresa || ''
+    ]
+  );
+  
+  return result.rows[0];
+}
+
 module.exports = {
   createVisitante,
   getVisitanteById,
   searchVisitantes,
   updateVisitante,
-  deleteVisitante
+  deleteVisitante,
+  crearOBuscarVisitante
 };

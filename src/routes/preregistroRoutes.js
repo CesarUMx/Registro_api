@@ -5,6 +5,10 @@ const {
   postCrearPreregistro,
   getPreregistros,
   getPreregistroPorId,
+  postGenerarLinkUnico,
+  postEnviarPorCorreo,
+  getPreregistroPorToken,
+  postCompletarPreregistro,
   patchEstadoPreregistro
 } = require('../controllers/preregistroController');
 
@@ -19,6 +23,12 @@ router.post('/list', requireRole('admin', 'sysadmin', 'guardia'), getPreregistro
 
 // GET /api/preregistros/:id - Obtener preregistro por ID
 router.get('/:id', requireRole('admin', 'sysadmin', 'guardia'), getPreregistroPorId);
+
+// POST /api/preregistros/generar-link - Generar link único para preregistro (solo admin y sysadmin)
+router.post('/generar-link', requireRole('admin', 'sysadmin'), postGenerarLinkUnico);
+
+// POST /api/preregistros/enviar-correo - Enviar preregistro completo por correo (solo admin y sysadmin)
+router.post('/enviar-correo', requireRole('admin', 'sysadmin'), postEnviarPorCorreo);
 
 // PATCH /api/preregistros/:id/status - Actualizar estado de preregistro
 router.patch('/:id/status', requireRole('admin', 'sysadmin', 'guardia'), patchEstadoPreregistro);

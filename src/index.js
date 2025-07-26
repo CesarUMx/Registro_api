@@ -13,6 +13,7 @@ const visitanteRouter = require('./routes/visitanteRoutes');
 const registroRouter = require('./routes/registroRoutes');
 const capturaRouter = require('./routes/capturaRoutes');
 const preregistroRouter = require('./routes/preregistroRoutes');
+const preregistroPublicoRouter = require('./routes/preregistroPublicoRoutes');
 // Importar el programador de alertas de demora
 const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 
@@ -60,6 +61,10 @@ app.get('/login-failure', (req, res) => {
 //camara RTSP
 app.use('/api/captura', capturaRouter);
 
+// Rutas públicas (sin autenticación)
+app.use('/api/preregistro-publico', preregistroPublicoRouter);
+
+// Rutas protegidas (con autenticación)
 app.use('/api/users', userManagementRouter);
 app.use('/api/vehiculos', vehiculoRouter);
 app.use('/api/visitantes', visitanteRouter);

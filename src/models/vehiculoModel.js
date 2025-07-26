@@ -59,11 +59,37 @@ async function updateVehiculo(id, fields) {
   
 
   
+/**
+ * Crear o buscar vehículo (para preregistros públicos)
+ */
+async function crearOBuscarVehiculo(vehiculoData) {
+  const { placas } = vehiculoData;
+  
+  // Primero buscar si ya existe por placas
+  const vehiculoExistente = await searchVehiculoByPlaca(placas);
+  
+  if (vehiculoExistente) {
+    // Si ya existe, devolverlo sin modificaciones
+    return vehiculoExistente;
+  }
+  
+  // Si no existe, crear nuevo vehículo (solo con placa)
+  const result = await pool.query(
+    `INSERT INTO vehiculos (placa)
+     VALUES ($1)
+     RETURNING *`,
+    [placas]
+  );
+  
+  return result.rows[0];
+}
+
 module.exports = {
     createVehiculo,
     getVehiculosByVisitante,
     getVehiculoById,
     deleteVehiculo,
     updateVehiculo,
-    searchVehiculoByPlaca
+    searchVehiculoByPlaca,
+    crearOBuscarVehiculo
 }

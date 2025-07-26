@@ -12,14 +12,16 @@ async function crearPreregistro({
   reason,
   visitantes = [],
   vehiculos = [],
-  marbetes = [] // Array de números de marbete para cada vehículo
+  marbetes = [], // Array de números de marbete para cada vehículo
+  token_unico = null,
+  estado_token = null
 }) {
   return withTransaction(async (client) => {
     try {
       // Crear el preregistro principal
       const preregistroQuery = `
-        INSERT INTO preregistros (admin_id, scheduled_entry_time, scheduled_exit_time, reason, status)
-        VALUES ($1, $2, $3, $4, 'pendiente')
+        INSERT INTO preregistros (admin_id, scheduled_entry_time, scheduled_exit_time, reason, status, token_unico, estado_token)
+        VALUES ($1, $2, $3, $4, 'pendiente', $5, $6)
         RETURNING *
       `;
       
@@ -27,7 +29,9 @@ async function crearPreregistro({
         admin_id,
         scheduled_entry_time,
         scheduled_exit_time,
-        reason
+        reason,
+        token_unico,
+        estado_token
       ]);
       
       const preregistro = preregistroResult.rows[0];
@@ -272,58 +276,204 @@ async function obtenerPreregistroPorId(id) {
  * Actualizar estado de preregistro
  */
 async function actualizarEstadoPreregistro(id, status, admin_id) {
-  const client = await pool.connect();
-  
-  try {
-    await client.query('BEGIN');
-    
-    // Actualizar el preregistro
-    const updateQuery = `
-      UPDATE preregistros 
-      SET status = $1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-      RETURNING *
-    `;
-    
-    const result = await client.query(updateQuery, [status, id]);
-    
-    if (result.rows.length === 0) {
-      throw new Error('Preregistro no encontrado');
+  return withTransaction(async (client) => {
+    try {
+      // Actualizar el preregistro
+      const updateQuery = `
+        UPDATE preregistros 
+        SET status = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `;
+      
+      const result = await client.query(updateQuery, [status, id]);
+      
+      if (result.rows.length === 0) {
+        throw new Error('Preregistro no encontrado');
+      }
+      
+      return result.rows[0];
+      
+    } catch (error) {
+      console.error('Error al actualizar estado del preregistro:', error);
+      throw error;
     }
-  
-    
-    await client.query('COMMIT');
-    
-    return result.rows[0];
-    
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error al actualizar estado de preregistro:', {
-      message: error.message,
-      code: error.code,
-      params: { id, status, admin_id }
-    });
-    
-    if (error.code === '23503') { // Foreign key violation
-      const customError = new Error('Preregistro o admin no encontrado');
-      customError.status = 404;
-      customError.code = 'NOT_FOUND';
-      throw customError;
+  });
+}
+
+/**
+ * Obtener preregistro por token único
+ */
+async function obtenerPreregistroPorToken(token) {
+  return withTransaction(async (client) => {
+    try {
+      const query = `
+        SELECT 
+          p.id,
+          p.codigo,
+          p.admin_id,
+          p.scheduled_entry_time,
+          p.scheduled_exit_time,
+          p.reason,
+          p.status,
+          p.token_unico,
+          p.estado_token,
+          p.created_at,
+          p.updated_at,
+          u.name as admin_name
+        FROM preregistros p
+        LEFT JOIN users u ON u.id = p.admin_id
+        WHERE p.token_unico = $1
+      `;
+      
+      const result = await client.query(query, [token]);
+      
+      if (result.rows.length === 0) {
+        return null;
+      }
+      
+      return result.rows[0];
+      
+    } catch (error) {
+      console.error('Error en obtenerPreregistroPorToken:', error);
+      throw error;
     }
-    
-    const customError = new Error('Error interno al actualizar el preregistro');
-    customError.status = 500;
-    customError.code = 'DATABASE_ERROR';
-    customError.originalError = error;
-    throw customError;
-  } finally {
-    client.release();
-  }
+  });
+}
+
+/**
+ * Actualizar estado del token de preregistro
+ */
+async function actualizarEstadoToken(token, nuevoEstado) {
+  return withTransaction(async (client) => {
+    try {
+      const query = `
+        UPDATE preregistros 
+        SET estado_token = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE token_unico = $2
+        RETURNING *
+      `;
+      
+      const result = await client.query(query, [nuevoEstado, token]);
+      
+      if (result.rows.length === 0) {
+        const error = new Error('Token no encontrado');
+        error.status = 404;
+        throw error;
+      }
+      
+      return result.rows[0];
+      
+    } catch (error) {
+      console.error('Error en actualizarEstadoToken:', error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Completar preregistro con datos del visitante y vehículo
+ */
+async function completarPreregistroConDatos({ preregistro_id, visitante_id, vehiculo_id, token }) {
+  return withTransaction(async (client) => {
+    try {
+      // Asociar visitante al preregistro
+      await client.query(
+        `INSERT INTO preregistro_visitantes (preregistro_id, visitante_id)
+         VALUES ($1, $2)
+         ON CONFLICT (preregistro_id, visitante_id) DO NOTHING`,
+        [preregistro_id, visitante_id]
+      );
+      
+      // Asociar vehículo al preregistro si se proporciona
+      if (vehiculo_id) {
+        await client.query(
+          `INSERT INTO preregistro_vehiculos (preregistro_id, vehiculo_id)
+           VALUES ($1, $2)
+           ON CONFLICT (preregistro_id, vehiculo_id) DO NOTHING`,
+          [preregistro_id, vehiculo_id]
+        );
+      }
+      
+      return {
+        preregistro_id,
+        visitantes_asociados: 1,
+        vehiculos_asociados: vehiculo_id ? 1 : 0,
+        mensaje: 'Preregistro completado exitosamente'
+      };
+      
+    } catch (error) {
+      console.error('Error en completarPreregistroConDatos:', error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Completar preregistro asociando visitantes y vehículos existentes
+ * @param {Object} params - Parámetros para completar el preregistro
+ * @param {number} params.preregistro_id - ID del preregistro
+ * @param {string} params.codigo_preregistro - Código del preregistro para generar códigos de visitante
+ * @param {Array<number>} params.visitantes - Array de IDs de visitantes
+ * @param {Array<number>} params.vehiculos - Array de IDs de vehículos
+ * @param {string} params.token - Token único para marcar como usado
+ * @returns {Promise<Object>} Resultado de la operación
+ */
+async function completarPreregistroConVisitantesYVehiculos({ 
+  preregistro_id, 
+  codigo_preregistro, 
+  visitantes = [], 
+  vehiculos = [],
+  token
+}) {
+  return withTransaction(async (client) => {
+    try {
+      // Insertar visitantes en preregistro_visitantes
+      for (let i = 0; i < visitantes.length; i++) {
+        const visitanteId = visitantes[i];
+        const codigoVisitante = generateVisitorTag(codigo_preregistro, i + 1);
+        await client.query(
+          `INSERT INTO preregistro_visitantes (preregistro_id, visitante_id, codigo_visitante)
+           VALUES ($1, $2, $3)`,
+          [preregistro_id, visitanteId, codigoVisitante]
+        );
+      }
+      
+      // Insertar vehículos en preregistro_vehiculos si existen
+      // El numero_marbete se deja en null - lo asigna el guardia después
+      for (let i = 0; i < vehiculos.length; i++) {
+        const vehiculoId = vehiculos[i];
+        await client.query(
+          `INSERT INTO preregistro_vehiculos (preregistro_id, vehiculo_id, numero_marbete)
+           VALUES ($1, $2, $3)`,
+          [preregistro_id, vehiculoId, null]
+        );
+      }
+      
+      // Marcar el token como usado para evitar reutilización
+      await actualizarEstadoToken(token, 'usado');
+      
+      return {
+        preregistro_id,
+        visitantes_asociados: visitantes.length,
+        vehiculos_asociados: vehiculos.length,
+        mensaje: 'Preregistro completado exitosamente'
+      };
+      
+    } catch (error) {
+      console.error('Error en completarPreregistroConVisitantesYVehiculos:', error);
+      throw error;
+    }
+  });
 }
 
 module.exports = {
   crearPreregistro,
   obtenerPreregistros,
   obtenerPreregistroPorId,
+  obtenerPreregistroPorToken,
+  actualizarEstadoToken,
+  completarPreregistroConDatos,
+  completarPreregistroConVisitantesYVehiculos,
   actualizarEstadoPreregistro
 };
