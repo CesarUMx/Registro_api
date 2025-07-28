@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
 const { verifyJWT, requireRole } = require('../middlewares/auth');
 const {
   postCrearPreregistro,
@@ -9,8 +11,35 @@ const {
   postEnviarPorCorreo,
   getPreregistroPorToken,
   postCompletarPreregistro,
-  patchEstadoPreregistro
+  patchEstadoPreregistro,
+  patchIniciarPreregistro,
+  getVerificarFotosFaltantes
 } = require('../controllers/preregistroController');
+
+// Configuración de multer para subida de archivos
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos de imagen'), false);
+    }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
+  }
+});
 
 // Middleware de autenticación para todas las rutas
 router.use(verifyJWT);
@@ -32,5 +61,19 @@ router.post('/enviar-correo', requireRole('admin', 'sysadmin'), postEnviarPorCor
 
 // PATCH /api/preregistros/:id/status - Actualizar estado de preregistro
 router.patch('/:id/status', requireRole('admin', 'sysadmin', 'guardia'), patchEstadoPreregistro);
+
+// GET /api/preregistros/:id/verificar-fotos - Verificar qué fotos faltan para iniciar preregistro
+router.get('/:id/verificar-fotos', requireRole('admin', 'sysadmin', 'guardia'), getVerificarFotosFaltantes);
+
+// PATCH /api/preregistros/:id/iniciar - Iniciar preregistro con fotos del conductor y placa
+router.patch('/:id/iniciar', 
+  requireRole('admin', 'sysadmin', 'guardia'),
+  upload.fields([
+    { name: 'foto_persona', maxCount: 1 },
+    { name: 'foto_ine', maxCount: 1 },
+    { name: 'foto_placa', maxCount: 1 }
+  ]),
+  patchIniciarPreregistro
+);
 
 module.exports = router;

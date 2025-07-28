@@ -302,6 +302,100 @@ async function actualizarEstadoPreregistro(id, status, admin_id) {
 }
 
 /**
+ * Iniciar preregistro con datos del conductor y fotos
+ */
+async function iniciarPreregistro(id, datos) {
+  return withTransaction(async (client) => {
+    try {
+      // 1. Actualizar el estado del preregistro a 'activo'
+      const updatePreregistroQuery = `
+        UPDATE preregistros 
+        SET status = 'activo', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+      `;
+      
+      const preregistroResult = await client.query(updatePreregistroQuery, [id]);
+      
+      if (preregistroResult.rows.length === 0) {
+        throw new Error('Preregistro no encontrado');
+      }
+
+      // 2. Actualizar las fotos del visitante seleccionado (solo si se proporcionan)
+      if (datos.visitante_id && (datos.foto_persona || datos.foto_ine)) {
+        const camposVisitante = [];
+        const valoresVisitante = [];
+        let contadorV = 1;
+
+        if (datos.foto_persona) {
+          camposVisitante.push(`foto_persona = $${contadorV}`);
+          valoresVisitante.push(datos.foto_persona);
+          contadorV++;
+        }
+
+        if (datos.foto_ine) {
+          camposVisitante.push(`foto_ine = $${contadorV}`);
+          valoresVisitante.push(datos.foto_ine);
+          contadorV++;
+        }
+
+        if (camposVisitante.length > 0) {
+          valoresVisitante.push(datos.visitante_id);
+          
+          const updateVisitanteQuery = `
+            UPDATE preregistro_visitantes 
+            SET ${camposVisitante.join(', ')}
+            WHERE id = $${contadorV}
+          `;
+          
+          await client.query(updateVisitanteQuery, valoresVisitante);
+        }
+      }
+
+      // 3. Actualizar la foto de placa del vehículo (solo si se proporciona)
+      if (datos.vehiculo_id && datos.foto_placa) {
+        const updateVehiculoQuery = `
+          UPDATE preregistro_vehiculos 
+          SET foto_placa = $1
+          WHERE id = $2
+        `;
+        
+        await client.query(updateVehiculoQuery, [datos.foto_placa, datos.vehiculo_id]);
+      }
+
+      // 4. Registrar evento en bitácora: entrada_caseta
+      if (datos.guardia_id) {
+        const insertBitacoraQuery = `
+          INSERT INTO bitacora_preregistros (
+            preregistro_id, 
+            tipo_evento, 
+            visitante_id, 
+            vehiculo_id, 
+            guardia_id, 
+            notas
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+        `;
+        
+        await client.query(insertBitacoraQuery, [
+          id,
+          'entrada_caseta',
+          datos.visitante_id || null,
+          datos.vehiculo_id || null,
+          datos.guardia_id,
+          'Preregistro iniciado - Entrada a caseta autorizada'
+        ]);
+      }
+      
+      return preregistroResult.rows[0];
+      
+    } catch (error) {
+      console.error('Error al iniciar preregistro:', error);
+      throw error;
+    }
+  });
+}
+
+/**
  * Obtener preregistro por token único
  */
 async function obtenerPreregistroPorToken(token) {
@@ -467,13 +561,300 @@ async function completarPreregistroConVisitantesYVehiculos({
   });
 }
 
+/**
+ * Verificar qué fotos ya existen para un visitante y vehículo específicos
+ * usando las relaciones de preregistro
+ */
+async function verificarFotosExistentes(preregistroVisitanteId, preregistroVehiculoId = null) {
+  return withTransaction(async (client) => {
+    try {
+      const resultado = {
+        visitante: null,
+        vehiculo: null,
+        necesita_foto_persona: false,
+        necesita_foto_ine: false,
+        necesita_foto_placa: false
+      };
+
+      // Verificar fotos del visitante usando JOIN con tabla visitantes
+      if (preregistroVisitanteId) {
+        const visitanteQuery = `
+          SELECT v.foto_persona, v.foto_ine, v.nombre, v.id as visitante_id
+          FROM preregistro_visitantes pv
+          JOIN visitantes v ON pv.visitante_id = v.id
+          WHERE pv.id = $1
+        `;
+        const visitanteResult = await client.query(visitanteQuery, [preregistroVisitanteId]);
+        
+        if (visitanteResult.rows.length === 0) {
+          throw new Error('Visitante de preregistro no encontrado');
+        }
+
+        resultado.visitante = visitanteResult.rows[0];
+        resultado.necesita_foto_persona = !resultado.visitante.foto_persona;
+        resultado.necesita_foto_ine = !resultado.visitante.foto_ine;
+      }
+
+      // Verificar fotos del vehículo usando JOIN con tabla vehiculos
+      if (preregistroVehiculoId) {
+        const vehiculoQuery = `
+          SELECT veh.foto_placa, veh.placa, veh.id as vehiculo_id
+          FROM preregistro_vehiculos pv
+          JOIN vehiculos veh ON pv.vehiculo_id = veh.id
+          WHERE pv.id = $1
+        `;
+        const vehiculoResult = await client.query(vehiculoQuery, [preregistroVehiculoId]);
+        
+        if (vehiculoResult.rows.length === 0) {
+          throw new Error('Vehículo de preregistro no encontrado');
+        }
+        
+        resultado.vehiculo = vehiculoResult.rows[0];
+        resultado.necesita_foto_placa = !resultado.vehiculo.foto_placa;
+      }
+      
+      return resultado;
+      
+    } catch (error) {
+      console.error('Error al verificar fotos existentes:', error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Verificar qué fotos faltan para iniciar un preregistro
+ */
+async function verificarFotosFaltantes(preregistroId) {
+  return withTransaction(async (client) => {
+    try {
+      // Obtener datos del preregistro con visitantes y vehículos usando JOINs correctos
+      const preregistroQuery = `
+        SELECT 
+          p.*,
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', pv.id,
+              'visitante_id', v.id,
+              'nombre', v.nombre,
+              'foto_persona', v.foto_persona,
+              'foto_ine', v.foto_ine,
+              'fotos_faltantes', ARRAY[
+                CASE WHEN v.foto_persona IS NULL OR v.foto_persona = '' THEN 'foto_persona' END,
+                CASE WHEN v.foto_ine IS NULL OR v.foto_ine = '' THEN 'foto_ine' END
+              ]::text[]
+            )
+          ) FILTER (WHERE pv.id IS NOT NULL) as visitantes,
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', pveh.id,
+              'vehiculo_id', veh.id,
+              'placa', veh.placa,
+              'foto_placa', veh.foto_placa,
+              'fotos_faltantes', ARRAY[
+                CASE WHEN veh.foto_placa IS NULL OR veh.foto_placa = '' THEN 'foto_placa' END
+              ]::text[]
+            )
+          ) FILTER (WHERE pveh.id IS NOT NULL) as vehiculos
+        FROM preregistros p
+        LEFT JOIN preregistro_visitantes pv ON p.id = pv.preregistro_id
+        LEFT JOIN visitantes v ON pv.visitante_id = v.id
+        LEFT JOIN preregistro_vehiculos pveh ON p.id = pveh.preregistro_id
+        LEFT JOIN vehiculos veh ON pveh.vehiculo_id = veh.id
+        WHERE p.id = $1
+        GROUP BY p.id
+      `;
+      
+      const result = await client.query(preregistroQuery, [preregistroId]);
+      
+      if (result.rows.length === 0) {
+        throw new Error('Preregistro no encontrado');
+      }
+      
+      const preregistro = result.rows[0];
+      const visitantes = preregistro.visitantes || [];
+      const vehiculos = preregistro.vehiculos || [];
+      
+      // Validar que haya al menos un visitante
+      if (visitantes.length === 0) {
+        return {
+          preregistro,
+          fotos_faltantes: {
+            visitantes: [],
+            vehiculos: [],
+            requiere_fotos: false
+          },
+          error: 'NO_VISITANTES',
+          message: 'No hay visitantes registrados en este preregistro'
+        };
+      }
+      
+      // Verificar fotos faltantes
+      const fotosFaltantes = {
+        visitantes: [],
+        vehiculos: [],
+        requiere_fotos: false
+      };
+      
+      // Verificar visitantes
+      visitantes.forEach(visitante => {
+        const faltantes = [];
+        if (!visitante.foto_persona) faltantes.push('foto_persona');
+        if (!visitante.foto_ine) faltantes.push('foto_ine');
+        
+        if (faltantes.length > 0) {
+          fotosFaltantes.visitantes.push({
+            id: visitante.id,
+            nombre: visitante.nombre,
+            fotos_faltantes: faltantes
+          });
+          fotosFaltantes.requiere_fotos = true;
+        }
+      });
+      
+      // Verificar vehículos
+      vehiculos.forEach(vehiculo => {
+        if (!vehiculo.foto_placa) {
+          fotosFaltantes.vehiculos.push({
+            id: vehiculo.id,
+            placa: vehiculo.placa,
+            fotos_faltantes: ['foto_placa']
+          });
+          fotosFaltantes.requiere_fotos = true;
+        }
+      });
+      
+      return {
+        preregistro,
+        fotos_faltantes: fotosFaltantes
+      };
+      
+    } catch (error) {
+      console.error('Error al verificar fotos faltantes:', error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Iniciar preregistro actualizando fotos en las tablas correctas
+ */
+async function iniciarPreregistroConFotos(preregistroId, visitanteId, vehiculoId, fotos, guardiaId) {
+  return withTransaction(async (client) => {
+    try {
+      // 1. Obtener los IDs de las tablas de relación del preregistro
+      const relacionesQuery = `
+        SELECT 
+          pv.id as preregistro_visitante_id,
+          pveh.id as preregistro_vehiculo_id
+        FROM preregistros p
+        LEFT JOIN preregistro_visitantes pv ON p.id = pv.preregistro_id AND pv.visitante_id = $2
+        LEFT JOIN preregistro_vehiculos pveh ON p.id = pveh.preregistro_id AND ($3::int IS NULL OR pveh.vehiculo_id = $3)
+        WHERE p.id = $1
+      `;
+      
+      const relacionesResult = await client.query(relacionesQuery, [preregistroId, visitanteId, vehiculoId]);
+      
+      if (relacionesResult.rows.length === 0) {
+        throw new Error('No se encontraron las relaciones del preregistro');
+      }
+      
+      const { preregistro_visitante_id, preregistro_vehiculo_id } = relacionesResult.rows[0];
+      
+      // 2. Verificar qué fotos ya existen
+      const fotosExistentes = await verificarFotosExistentes(preregistro_visitante_id, preregistro_vehiculo_id);
+      
+      // 3. Actualizar fotos del visitante si es necesario
+      if (fotos.fotoPersona || fotos.fotoIne) {
+        const updateVisitanteFields = [];
+        const updateVisitanteValues = [];
+        let paramIndex = 1;
+        
+        if (fotos.fotoPersona && fotosExistentes.necesita_foto_persona) {
+          updateVisitanteFields.push(`foto_persona = $${paramIndex++}`);
+          updateVisitanteValues.push(fotos.fotoPersona);
+        }
+        
+        if (fotos.fotoIne && fotosExistentes.necesita_foto_ine) {
+          updateVisitanteFields.push(`foto_ine = $${paramIndex++}`);
+          updateVisitanteValues.push(fotos.fotoIne);
+        }
+        
+        if (updateVisitanteFields.length > 0) {
+          const updateVisitanteQuery = `
+            UPDATE visitantes 
+            SET ${updateVisitanteFields.join(', ')}
+            WHERE id = $${paramIndex}
+          `;
+          updateVisitanteValues.push(visitanteId);
+          
+          await client.query(updateVisitanteQuery, updateVisitanteValues);
+        }
+      }
+      
+      // 4. Actualizar foto del vehículo si es necesario
+      if (vehiculoId && fotos.fotoPlaca && fotosExistentes.necesita_foto_placa) {
+        const updateVehiculoQuery = `
+          UPDATE vehiculos 
+          SET foto_placa = $1
+          WHERE id = $2
+        `;
+        
+        await client.query(updateVehiculoQuery, [fotos.fotoPlaca, vehiculoId]);
+      }
+      
+      // 5. Actualizar estado del preregistro a 'activo'
+      const updatePreregistroQuery = `
+        UPDATE preregistros 
+        SET status = 'activo', updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `;
+      
+      const preregistroResult = await client.query(updatePreregistroQuery, [preregistroId]);
+      const preregistroActualizado = preregistroResult.rows[0];
+      
+      // 6. Registrar evento en bitácora
+      const bitacoraQuery = `
+        INSERT INTO bitacora_preregistros (preregistro_id, evento, visitante_id, vehiculo_id, guardia_id, created_at)
+        VALUES ($1, 'entrada_caseta', $2, $3, $4, NOW())
+      `;
+      
+      await client.query(bitacoraQuery, [preregistroId, visitanteId, vehiculoId, guardiaId]);
+      
+      return {
+        preregistro: preregistroActualizado,
+        fotos_existentes: fotosExistentes
+      };
+      
+    } catch (error) {
+      console.error('Error al iniciar preregistro con fotos:', error);
+      throw error;
+    }
+  });
+}
+
 module.exports = {
+  // Funciones CRUD básicas (manteniendo nombres que usa el controlador)
   crearPreregistro,
   obtenerPreregistros,
   obtenerPreregistroPorId,
+  actualizarEstadoPreregistro,
+  
+  // Alias para compatibilidad con controlador
+  getAllPreregistros: obtenerPreregistros,
+  getPreregistroById: obtenerPreregistroPorId,
+  createPreregistro: crearPreregistro,
+  updatePreregistro: actualizarEstadoPreregistro,
+  deletePreregistro: actualizarEstadoPreregistro,
+  
+  // Funciones específicas para tokens y completado
   obtenerPreregistroPorToken,
   actualizarEstadoToken,
-  completarPreregistroConDatos,
   completarPreregistroConVisitantesYVehiculos,
-  actualizarEstadoPreregistro
+  
+  // Funciones para manejo de fotos
+  verificarFotosFaltantes,
+  verificarFotosExistentes,
+  iniciarPreregistroConFotos
 };

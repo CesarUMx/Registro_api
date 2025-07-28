@@ -1,11 +1,19 @@
 const { 
-  crearPreregistro, 
-  obtenerPreregistros, 
+  getAllPreregistros,
+  getPreregistroById,
+  createPreregistro,
+  updatePreregistro,
+  deletePreregistro,
+  obtenerPreregistros,
   obtenerPreregistroPorId,
+  crearPreregistro,
   obtenerPreregistroPorToken,
   actualizarEstadoToken,
+  completarPreregistroConVisitantesYVehiculos,
   actualizarEstadoPreregistro,
-  completarPreregistroConVisitantesYVehiculos
+  verificarFotosExistentes,
+  verificarFotosFaltantes,
+  iniciarPreregistroConFotos
 } = require('../models/preregistroModel');
 const { checkRequiredFields, handleError, normalizeName, withTransaction } = require('../utils/controllerHelpers');
 
@@ -795,6 +803,103 @@ async function crearVehiculoPublico(req, res) {
   }
 }
 
+/**
+ * Iniciar preregistro con fotos del conductor y placa
+ */
+async function patchIniciarPreregistro(req, res) {
+  try {
+    const { id } = req.params;
+    const { visitante_id, vehiculo_id } = req.body;
+    
+    console.log('Datos recibidos:', { id, visitante_id, vehiculo_id });
+    console.log('Archivos recibidos:', req.files);
+    
+    // Validar que se proporcione el visitante
+    if (!visitante_id) {
+      return res.status(400).json({ 
+        ok: false, 
+        message: 'El visitante es requerido' 
+      });
+    }
+
+    // 1. Obtener los archivos subidos
+    const fotoPersona = req.files?.foto_persona?.[0];
+    const fotoIne = req.files?.foto_ine?.[0];
+    const fotoPlaca = req.files?.foto_placa?.[0];
+    
+    // 2. Preparar objeto de fotos
+    const fotos = {
+      fotoPersona: fotoPersona?.filename,
+      fotoIne: fotoIne?.filename,
+      fotoPlaca: fotoPlaca?.filename
+    };
+    
+    // 3. Usar función del modelo para iniciar preregistro
+    const resultado = await iniciarPreregistroConFotos(
+      id, 
+      visitante_id, 
+      vehiculo_id, 
+      fotos, 
+      req.user.id
+    );
+    
+    // 4. Obtener datos actualizados del preregistro
+    const preregistroCompleto = await getPreregistroById(id);
+    
+    res.json({
+      ok: true,
+      message: 'Preregistro iniciado exitosamente',
+      data: preregistroCompleto,
+      fotos_requeridas: {
+        necesitaba_foto_persona: resultado.fotos_existentes.necesita_foto_persona,
+        necesitaba_foto_ine: resultado.fotos_existentes.necesita_foto_ine,
+        necesitaba_foto_placa: resultado.fotos_existentes.necesita_foto_placa
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error al iniciar preregistro:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Verificar qué fotos faltan para iniciar un preregistro
+ */
+async function getVerificarFotosFaltantes(req, res) {
+  try {
+    const { id } = req.params;
+    
+    const resultado = await verificarFotosFaltantes(id);
+    
+    // Verificar si hay error de visitantes faltantes
+    if (resultado.error === 'NO_VISITANTES') {
+      return res.status(400).json({
+        ok: false,
+        error: 'NO_VISITANTES',
+        message: resultado.message
+      });
+    }
+    
+    res.json({
+      ok: true,
+      data: resultado
+    });
+    
+  } catch (error) {
+    console.error('Error al verificar fotos faltantes:', error);
+    res.status(500).json({
+      ok: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+}
+
 module.exports = {
   postCrearPreregistro,
   getPreregistros,
@@ -804,6 +909,8 @@ module.exports = {
   getPreregistroPorToken,
   postCompletarPreregistro,
   patchEstadoPreregistro,
+  patchIniciarPreregistro,
+  getVerificarFotosFaltantes,
   buscarVisitantesPublico,
   crearVisitantePublico,
   buscarVehiculoPublico,
