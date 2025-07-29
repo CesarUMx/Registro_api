@@ -13,8 +13,11 @@ const {
   postCompletarPreregistro,
   patchEstadoPreregistro,
   patchIniciarPreregistro,
-  getVerificarFotosFaltantes
+  getVerificarFotosFaltantes,
+  postCargarFotoVisitante,
+  postCargarFotoVehiculo
 } = require('../controllers/preregistroController');
+const { getBitacoraPreregistro } = require('../controllers/bitacoraController');
 
 // Configuración de multer para subida de archivos
 const storage = multer.diskStorage({
@@ -68,12 +71,30 @@ router.get('/:id/verificar-fotos', requireRole('admin', 'sysadmin', 'guardia'), 
 // PATCH /api/preregistros/:id/iniciar - Iniciar preregistro con fotos del conductor y placa
 router.patch('/:id/iniciar', 
   requireRole('admin', 'sysadmin', 'guardia'),
+  patchIniciarPreregistro
+);
+
+// POST /api/preregistros/cargar-foto-visitante - Cargar fotos de visitante (foto_persona y/o foto_ine)
+router.post('/cargar-foto-visitante',
+  requireRole('admin', 'sysadmin', 'guardia'),
   upload.fields([
     { name: 'foto_persona', maxCount: 1 },
-    { name: 'foto_ine', maxCount: 1 },
-    { name: 'foto_placa', maxCount: 1 }
+    { name: 'foto_ine', maxCount: 1 }
   ]),
-  patchIniciarPreregistro
+  postCargarFotoVisitante
+);
+
+// POST /api/preregistros/cargar-foto-vehiculo - Cargar foto de placa de vehículo
+router.post('/cargar-foto-vehiculo',
+  requireRole('admin', 'sysadmin', 'guardia'),
+  upload.single('foto_placa'),
+  postCargarFotoVehiculo
+);
+
+// GET /api/preregistros/:id/bitacora - Obtener bitácora completa de un preregistro
+router.get('/:id/bitacora',
+  requireRole('admin', 'sysadmin', 'guardia'),
+  getBitacoraPreregistro
 );
 
 module.exports = router;

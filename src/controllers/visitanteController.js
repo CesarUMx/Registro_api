@@ -11,19 +11,18 @@ const {
   // POST /api/visitantes crear visitante
   async function postVisitante(req, res) {
     try {
-      const { nombre, tipo, telefono, empresa, foto_persona_nombre } = req.body;
+      const { nombre, tipo, telefono, empresa } = req.body;
       const nombreNormalizado = normalizeName(nombre);
       
       // Obtener el nombre del archivo de la foto de persona, ya sea desde el campo foto_persona_nombre
       // o desde el archivo subido
-      let foto_persona = foto_persona_nombre || req.files?.foto_persona?.[0]?.filename;
       const foto_ine = req.files?.foto_ine?.[0]?.filename;
 
       checkRequiredFields(['nombre', 'tipo'], req.body);
 
       if (tipo !== 'menor de edad' && tipo !== 'preregistro') {
-        if (!foto_persona || !foto_ine) {
-          throw Object.assign(new Error('foto_persona y foto_ine son obligatorias para este tipo de visitante'), {
+        if (!foto_ine) {
+          throw Object.assign(new Error('foto_ine es obligatoria para este tipo de visitante'), {
             status: 400,
             code: 'MISSING_FOTOS'
           });
@@ -35,7 +34,6 @@ const {
         tipo,
         telefono,
         empresa,
-        foto_persona,
         foto_ine
       });
   
@@ -99,10 +97,42 @@ const {
     }
   }
   
+  // PATCH /api/visitantes/:id/foto-persona actualizar foto de persona del visitante
+  async function updateVisitanteFotoPersona(req, res) {
+    try {
+      const visitanteId = req.params.id;
+      
+      // Verificar si existe el visitante
+      const visitante = await getVisitanteById(visitanteId);
+      if (!visitante) {
+        return res.status(404).json({ ok: false, error: 'Visitante no encontrado' });
+      }
+
+      // Verificar si se subió una foto
+      if (!req.files?.foto_persona?.[0]) {
+        return res.status(400).json({ ok: false, error: 'No se proporcionó una foto' });
+      }
+
+      const foto_persona = req.files.foto_persona[0].filename;
+      
+      // Actualizar solo el campo foto_persona
+      const updated = await updateVisitante(visitanteId, { foto_persona });
+      
+      res.json({ 
+        ok: true, 
+        visitante: updated,
+        message: 'Foto actualizada correctamente'
+      });
+    } catch (error) {
+      handleError(res, error);
+    }
+  }
+
   module.exports = {
     postVisitante,
     getVisitantes,
     getVisitanteByIdHandler,
     putVisitante,
-    deleteVisitanteHandler
+    deleteVisitanteHandler,
+    updateVisitanteFotoPersona
   };  

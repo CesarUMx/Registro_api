@@ -13,7 +13,10 @@ const {
   actualizarEstadoPreregistro,
   verificarFotosExistentes,
   verificarFotosFaltantes,
-  iniciarPreregistroConFotos
+  iniciarPreregistroConFotos,
+  cargarFotoVisitante,
+  cargarFotoVehiculo,
+  iniciarPreregistroMultiple
 } = require('../models/preregistroModel');
 const { checkRequiredFields, handleError, normalizeName, withTransaction } = require('../utils/controllerHelpers');
 
@@ -809,52 +812,36 @@ async function crearVehiculoPublico(req, res) {
 async function patchIniciarPreregistro(req, res) {
   try {
     const { id } = req.params;
-    const { visitante_id, vehiculo_id } = req.body;
+    const { visitantes } = req.body;
     
-    console.log('Datos recibidos:', { id, visitante_id, vehiculo_id });
-    console.log('Archivos recibidos:', req.files);
+    console.log('Datos recibidos para iniciar preregistro:', { id, visitantes });
     
-    // Validar que se proporcione el visitante
-    if (!visitante_id) {
+    // Validar que se proporcionen visitantes
+    if (!visitantes || !Array.isArray(visitantes) || visitantes.length === 0) {
       return res.status(400).json({ 
         ok: false, 
-        message: 'El visitante es requerido' 
+        message: 'Se requiere al menos un visitante' 
       });
     }
 
-    // 1. Obtener los archivos subidos
-    const fotoPersona = req.files?.foto_persona?.[0];
-    const fotoIne = req.files?.foto_ine?.[0];
-    const fotoPlaca = req.files?.foto_placa?.[0];
+    // Verificar si tenemos un ID de guardia válido
+    const guardiaId = req.user && req.user.id ? req.user.id : 1; // Usar 1 como ID por defecto si no hay usuario
+    console.log('ID de guardia utilizado:', guardiaId);
     
-    // 2. Preparar objeto de fotos
-    const fotos = {
-      fotoPersona: fotoPersona?.filename,
-      fotoIne: fotoIne?.filename,
-      fotoPlaca: fotoPlaca?.filename
-    };
-    
-    // 3. Usar función del modelo para iniciar preregistro
-    const resultado = await iniciarPreregistroConFotos(
-      id, 
-      visitante_id, 
-      vehiculo_id, 
-      fotos, 
-      req.user.id
+    // 1. Iniciar el preregistro y registrar entrada_caseta para todos los visitantes y vehículos
+    const resultado = await iniciarPreregistroMultiple(
+      id,
+      visitantes,
+      guardiaId
     );
     
-    // 4. Obtener datos actualizados del preregistro
+    // 2. Obtener datos actualizados del preregistro
     const preregistroCompleto = await getPreregistroById(id);
     
     res.json({
       ok: true,
       message: 'Preregistro iniciado exitosamente',
-      data: preregistroCompleto,
-      fotos_requeridas: {
-        necesitaba_foto_persona: resultado.fotos_existentes.necesita_foto_persona,
-        necesitaba_foto_ine: resultado.fotos_existentes.necesita_foto_ine,
-        necesitaba_foto_placa: resultado.fotos_existentes.necesita_foto_placa
-      }
+      data: preregistroCompleto
     });
     
   } catch (error) {
@@ -900,6 +887,102 @@ async function getVerificarFotosFaltantes(req, res) {
   }
 }
 
+/**
+ * Cargar fotos de visitante (foto_persona y/o foto_ine)
+ */
+async function postCargarFotoVisitante(req, res) {
+  try {
+    const { visitante_id } = req.body;
+    
+    if (!visitante_id) {
+      const error = new Error('ID de visitante es requerido');
+      error.status = 400;
+      throw error;
+    }
+
+    // Verificar que se hayan enviado archivos
+    if (!req.files || (!req.files.foto_persona && !req.files.foto_ine)) {
+      const error = new Error('Debe enviar al menos una foto (foto_persona o foto_ine)');
+      error.status = 400;
+      throw error;
+    }
+
+    const fotos = {};
+    
+    if (req.files.foto_persona) {
+      fotos.foto_persona = req.files.foto_persona[0].filename;
+    }
+    
+    if (req.files.foto_ine) {
+      fotos.foto_ine = req.files.foto_ine[0].filename;
+    }
+
+    const visitanteActualizado = await cargarFotoVisitante(visitante_id, fotos);
+
+    res.status(200).json({
+      ok: true,
+      message: 'Fotos de visitante cargadas exitosamente',
+      visitante: visitanteActualizado
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+/**
+ * Cargar foto de placa de vehículo
+ */
+async function postCargarFotoVehiculo(req, res) {
+  try {
+    console.log('🚗 [BACKEND] Recibiendo solicitud de carga de foto de vehículo');
+    console.log('💶 req.body:', req.body);
+    console.log('📁 req.file:', req.file);
+    console.log('📁 req.files:', req.files);
+    
+    const { vehiculo_id } = req.body;
+    
+    console.log('🔑 vehiculo_id recibido:', vehiculo_id);
+    
+    if (!vehiculo_id) {
+      console.log('❌ Error: vehiculo_id faltante');
+      const error = new Error('ID de vehículo es requerido');
+      error.status = 400;
+      throw error;
+    }
+    
+    let fotoPlaca;
+    
+    // Verificar si se envió un archivo o un nombre de archivo capturado
+    if (req.body.foto_placa_nombre) {
+      // Foto capturada con WebRTC
+      console.log('📷 Usando foto capturada:', req.body.foto_placa_nombre);
+      fotoPlaca = req.body.foto_placa_nombre;
+    } else if (req.file) {
+      // Cuando usamos upload.single, el archivo está en req.file
+      console.log('📁 Usando archivo subido:', req.file.filename);
+      fotoPlaca = req.file.filename;
+    } else {
+      console.log('❌ Error: No se encontró foto ni archivo');
+      console.log('req.body:', req.body);
+      console.log('req.file:', req.file);
+      console.log('req.files:', req.files);
+      const error = new Error('Debe enviar la foto de la placa o el nombre del archivo capturado');
+      error.status = 400;
+      throw error;
+    }
+
+    const vehiculoActualizado = await cargarFotoVehiculo(vehiculo_id, fotoPlaca);
+
+    res.status(200).json({
+      ok: true,
+      message: 'Foto de placa cargada exitosamente',
+      vehiculo: vehiculoActualizado
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
 module.exports = {
   postCrearPreregistro,
   getPreregistros,
@@ -911,6 +994,8 @@ module.exports = {
   patchEstadoPreregistro,
   patchIniciarPreregistro,
   getVerificarFotosFaltantes,
+  postCargarFotoVisitante,
+  postCargarFotoVehiculo,
   buscarVisitantesPublico,
   crearVisitantePublico,
   buscarVehiculoPublico,

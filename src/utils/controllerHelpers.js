@@ -157,13 +157,14 @@ async function validarCampos(edificio, idPersonaVisitar, motivo, visitantes) {
 
   // Validar campos por visitante
   for (const v of visitantes) {
-    if (!v.id_visitante || !v.tag_type) {
-      const error = new Error('Cada visitante debe incluir id_visitante y tag_type');
+    if (!v.id_visitante) {
+      const error = new Error('Cada visitante debe incluir id_visitante');
       error.status = 400;
       error.code = 'INVALID_VISITANTE_ENTRY';
       throw error;
     }
 
+    // Validación de tarjeta solo si se proporciona tag_type
     if (v.tag_type === 'tarjeta' && !v.n_tarjeta) {
       const error = new Error('n_tarjeta es obligatorio si el tag_type es "tarjeta"');
       error.status = 400;

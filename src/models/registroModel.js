@@ -126,7 +126,7 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
 
     // Actualizar cada visitante seleccionado
     for (const v of visitantes) {
-      // Validar tarjeta si es necesario
+      // Validar tarjeta si es necesario (solo si se proporciona tag_type)
       if (v.tag_type === 'tarjeta' && v.n_tarjeta) {
         await validateTarjetaDisponible(v.n_tarjeta, client);
       }
@@ -147,16 +147,27 @@ async function agregarVisitantesEdificio(registroId, visitantes, idGuardiaEntrad
       // Guardar el código para devolverlo en la respuesta
       codigos.push({ id_visitante: v.id_visitante, codigo: visitanteActual[0].codigo });
 
-      // Actualizar el registro del visitante
-      await client.query(
-        `UPDATE registro_visitantes
-         SET hora_entrada_edificio = NOW(), 
-             estatus = 'en edificio', 
-             tag_type = $3, 
-             n_tarjeta = $4
-         WHERE registro_id = $1 AND id_visitante = $2`,
-        [registroId, v.id_visitante, v.tag_type, v.n_tarjeta || null]
-      );
+      // Actualizar el registro del visitante - solo actualizar tag_type y n_tarjeta si se proporcionan
+      if (v.tag_type && v.n_tarjeta !== undefined) {
+        await client.query(
+          `UPDATE registro_visitantes
+           SET hora_entrada_edificio = NOW(), 
+               estatus = 'en edificio', 
+               tag_type = $3, 
+               n_tarjeta = $4
+           WHERE registro_id = $1 AND id_visitante = $2`,
+          [registroId, v.id_visitante, v.tag_type, v.n_tarjeta || null]
+        );
+      } else {
+        // Solo actualizar hora y estatus si no se proporcionan tag_type/n_tarjeta
+        await client.query(
+          `UPDATE registro_visitantes
+           SET hora_entrada_edificio = NOW(), 
+               estatus = 'en edificio'
+           WHERE registro_id = $1 AND id_visitante = $2`,
+          [registroId, v.id_visitante]
+        );
+      }
     }
 
     // ✅ Solo se actualizan datos administrativos, no hora ni estatus
