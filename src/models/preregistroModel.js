@@ -658,10 +658,11 @@ async function verificarFotosFaltantes(preregistroId) {
         requiere_fotos: false
       };
       
-      // Verificar visitantes
+      // Verificar visitantes - solo requerir foto_ine, foto_persona no es obligatoria
       visitantes.forEach(visitante => {
         const faltantes = [];
-        if (!visitante.foto_persona) faltantes.push('foto_persona');
+        // No requerimos foto_persona para iniciar preregistro
+        // if (!visitante.foto_persona) faltantes.push('foto_persona');
         if (!visitante.foto_ine) faltantes.push('foto_ine');
         
         if (faltantes.length > 0) {
