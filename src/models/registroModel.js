@@ -12,11 +12,11 @@ async function crearRegistroYConductor({
   vehiculo_id,
   idVisitanteConductor,
   tipoVisitanteConductor,
+  tipoVisitanteNoRegistrado,
   nVisitantes,
   idGuardiaCaseta,
   tagType,
   nTarjeta,
-  idPreregistro,
   numMarbete,
   motivo
 }) {
@@ -26,6 +26,8 @@ async function crearRegistroYConductor({
     let tipo_r = 'completo';
     if (['proveedor', 'taxi o uber'].includes(tipoVisitanteConductor)) {
       tipo_r = 'proveedor';
+    } else if (tipoVisitanteConductor === 'no registrado') {
+      tipo_r = 'no_registrado';
     }
 
     // Insertar registro principal
@@ -36,10 +38,11 @@ async function crearRegistroYConductor({
          n_visitantes,
          estatus,
          tipo_r,
-         motivo
-       ) VALUES ($1, NOW(), $2, 'iniciado', $3, $4)
+         motivo,
+         tipo_no_reguistardo
+       ) VALUES ($1, NOW(), $2, 'iniciado', $3, $4, $5)
        RETURNING id`,
-      [idGuardiaCaseta, nVisitantes, tipo_r, motivo]
+      [idGuardiaCaseta, nVisitantes, tipo_r, motivo, tipoVisitanteNoRegistrado]
     );
 
     const registroId = result.rows[0].id;

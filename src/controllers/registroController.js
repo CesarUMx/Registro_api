@@ -22,11 +22,12 @@ async function postRegistroEntradaCaseta(req, res) {
       tag_type,
       n_tarjeta,
       num_marbete,
-      motivo
+      motivo,
+      tipo_no_registrado
     } = req.body;
 
     // Validaciones obligatorias
-    checkRequiredFields(['id_vehiculo', 'id_visitante_conductor', 'tipo_conductor', 'n_visitantes', 'tag_type', 'num_marbete', 'motivo'], req.body);
+    checkRequiredFields(['id_vehiculo', 'id_visitante_conductor', 'tipo_conductor', 'n_visitantes', 'tag_type', 'motivo'], req.body);
 
     // Si tag_type es "tarjeta", n_tarjeta es obligatorio
     if (tag_type === 'tarjeta' && !n_tarjeta) {
@@ -35,10 +36,12 @@ async function postRegistroEntradaCaseta(req, res) {
       error.code = 'MISSING_TARJETA';
       throw error;
     }
+
     const resultado = await crearRegistroYConductor({
       vehiculo_id: id_vehiculo,
       idVisitanteConductor: id_visitante_conductor,
       tipoVisitanteConductor: tipo_conductor,
+      tipoVisitanteNoRegistrado: tipo_no_registrado || null,
       nVisitantes: n_visitantes,
       idGuardiaCaseta: req.user.userId,
       tagType: tag_type,
