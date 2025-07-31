@@ -873,8 +873,7 @@ async function crearRegistroDesdeCodigoPersona({
   visitanteId,
   guardiaId,
   tagType,
-  nTarjeta,
-  numMarbete
+  nTarjeta
 }) {
   return withTransaction(async (client) => {
     let motivo, idPersonaAVisitar = null;
@@ -937,10 +936,9 @@ async function crearRegistroDesdeCodigoPersona({
       INSERT INTO registro_vehiculos (
         registro_id,
         vehiculo_id,
-        hora_entrada,
-        num_marbete
-      ) VALUES ($1, $2, NOW(), $3)
-    `, [registroId, vehiculoId, numMarbete]);
+        hora_entrada
+      ) VALUES ($1, $2, NOW())
+    `, [registroId, vehiculoId]);
 
     return {
       registro_id: registroId,

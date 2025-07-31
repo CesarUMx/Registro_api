@@ -418,9 +418,9 @@ async function getRegistroDetalle(req, res) {
 
 async function patchAsociarVehiculo(req, res) {
   try {
-    const { code_registro, id_vehiculo, id_visitante, tag_type, n_tarjeta = null, num_marbete } = req.body;
+    const { code_registro, id_vehiculo, id_visitante, tag_type, n_tarjeta = null } = req.body;
 
-    if (!code_registro || !id_vehiculo || !id_visitante || !tag_type || !num_marbete) {
+    if (!code_registro || !id_vehiculo || !id_visitante || !tag_type) {
       return res.status(400).json({
         ok: false,
         error: 'Faltan datos necesarios para vincular vehículo'
@@ -433,7 +433,7 @@ async function patchAsociarVehiculo(req, res) {
     // Determinar el tipo de código
     if (codigo.startsWith('UMX')) {
       // Es un código de registro normal
-      resultado = await asociarVehiculoARegistro(codigo, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta, num_marbete);
+      resultado = await asociarVehiculoARegistro(codigo, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta);
     } else if (/^\d+$/.test(codigo)) {
       // Es un código numérico, podría ser código de empleado o matrícula de alumno
       
@@ -449,8 +449,7 @@ async function patchAsociarVehiculo(req, res) {
           visitanteId: id_visitante,
           guardiaId: req.user.userId,
           tagType: tag_type,
-          nTarjeta: n_tarjeta,
-          numMarbete: num_marbete
+          nTarjeta: n_tarjeta
         });
       } else {
         // Verificamos si es una matrícula de alumno
@@ -465,8 +464,7 @@ async function patchAsociarVehiculo(req, res) {
             visitanteId: id_visitante,
             guardiaId: req.user.userId,
             tagType: tag_type,
-            nTarjeta: n_tarjeta,
-            numMarbete: num_marbete
+            nTarjeta: n_tarjeta
           });
         } else {
           // No es un código válido
