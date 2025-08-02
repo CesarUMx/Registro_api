@@ -6,19 +6,17 @@ const cors = require('cors');
 const app     = express();
 const authRouter = require('./routes/auth');
 const passport = require('./config/passport');
-const invitesRouter = require('./routes/invites');
-const invitePreregRouter = require('./routes/invitePreregistro');
-const preregistrosRouter = require('./routes/preregistros');
-const registrosRouter = require('./routes/registros');
 const userManagementRouter = require('./routes/userManagementRoutes');
-
-// Nuevas rutas para visitantes y conductores
-const visitorRouter = require('./routes/visitors');
-const driverRouter = require('./routes/drivers');
-const visitorDriverRouter = require('./routes/visitorDrivers');
-const registroVisitantesRouter = require('./routes/registroVisitantesRoutes');
-const codeRouter = require('./routes/codeRoutes');
 const errorHandler = require('./middlewares/errorHandler');
+const vehiculoRouter = require('./routes/vehiculoRoutes');
+const visitanteRouter = require('./routes/visitanteRoutes');
+const registroRouter = require('./routes/registroRoutes');
+const capturaRouter = require('./routes/capturaRoutes');
+const preregistroRouter = require('./routes/preregistroRoutes');
+const preregistroPublicoRouter = require('./routes/preregistroPublicoRoutes');
+const bitacoraRouter = require('./routes/bitacoraRoutes');
+// Importar el programador de alertas de demora
+const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 
 // Configuración CORS
 app.use(cors({
@@ -61,25 +59,20 @@ app.get('/login-failure', (req, res) => {
   res.status(401).json({ ok: false, error: 'Autenticación con Google fallida' });
 });
 
-// Prefijo /api para todas las rutas de la API
+//camara RTSP
+app.use('/api/captura', capturaRouter);
 
-// Rutas no protegidas
-app.use('/preregistro', invitePreregRouter);
+// Rutas públicas (sin autenticación)
+app.use('/api/preregistro-publico', preregistroPublicoRouter);
 
-// Rutas protegidas
-// Quitamos el prefijo /api para mantener compatibilidad con el frontend
-app.use('/api/visitors', visitorRouter);
-app.use('/api/drivers', driverRouter);
-// Montar el enrutador de relaciones visitante-conductor directamente en la raíz
-// porque sus rutas ya incluyen los prefijos completos
-app.use(visitorDriverRouter); // Para rutas como /visitors/:visitorId/drivers
-app.use('/api', registroVisitantesRouter); // Para rutas de visitantes de registro
-app.use('/api/code', codeRouter); // Para rutas de búsqueda y validación de códigos
-app.use('/api/invites', invitesRouter);  
-app.use('/preregistros', preregistrosRouter);
-app.use('/api/registros', registrosRouter);
+// Rutas protegidas (con autenticación)
 app.use('/api/users', userManagementRouter);
-
+app.use('/api/vehiculos', vehiculoRouter);
+app.use('/api/visitantes', visitanteRouter);
+app.use('/api/registro', registroRouter);
+app.use('/api/preregistros', preregistroRouter);
+app.use('/api/eventos', require('./routes/eventoRoutes'));
+app.use('/api/bitacora', bitacoraRouter);
 // Para cualquier ruta no definida:
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta no encontrada' });
@@ -89,6 +82,16 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
+  
+  // Iniciar el programador de alertas de demora
+  // Como ahora es una función asíncrona, usamos await para esperar a que termine
+  console.log('Iniciando programador de alertas de demora...');
+  try {
+    await iniciarProgramadorAlertasDemora();
+    console.log('Programador de alertas de demora iniciado correctamente');
+  } catch (error) {
+    console.error('Error al iniciar el programador de alertas de demora:', error);
+  }
 });

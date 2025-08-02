@@ -153,7 +153,10 @@ async function updateUser(id, updateData) {
 // Eliminar un usuario
 async function deleteUser(id) {
   try {
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    await pool.query(
+      'UPDATE users SET activo = false WHERE id = $1',
+      [id]
+    );
     return true;
   } catch (err) {
     console.error(`Error en modelo al eliminar usuario con ID ${id}:`, err);
@@ -213,6 +216,78 @@ async function getGuardUsers() {
   }
 }
 
+// Validar si existe un usuario con el código de empleado proporcionado
+async function validarCodigoEmpleado(codigo) {
+  try {
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.email
+      FROM users u
+      WHERE u.codigo_empleado = $1
+    `, [codigo]);
+    
+    if (result.rows.length === 0) {
+      return { valido: false };
+    }
+    
+    return { 
+      valido: true, 
+      usuario: result.rows[0],
+      tipo: 'empleado'
+    };
+  } catch (err) {
+    console.error(`Error al validar código de empleado ${codigo}:`, err);
+    throw err;
+  }
+}
+
+// Función para validar matrícula de alumno usando la API académica
+async function validarMatriculaAlumno(matricula) {
+  try {
+    const axios = require('axios');
+    
+    // Configuración de la petición a la API
+    const config = {
+      method: 'get',
+      url: `https://apis.academic.lat/v3/schoolControl/students?onlyCurrentStudents=false&pageNumber=1&rowsPerPage=1&registrationTag=${matricula}`,
+      headers: { 
+        'accept': 'application/json', 
+        'authorization': 'Basic TVRBd2ZHRmhOV0pqWVRJeExXRTBNelF0TkRCaU55MDVOalV3TFRBeFlUaGtZbVl6TlRRMllYeERaWE5oY2c9PTo2N0UzNUE3MzlFRUE0NjBFQjAxODNDNDJDRkIxQUQ1Ng==' 
+      }
+    };
+    
+    // Realizar la petición a la API
+    const response = await axios(config);
+    
+    // Verificar si la respuesta es exitosa y contiene datos
+    if (response.data.resultado.exito) {
+      // Si hay datos de estudiante, extraer la información necesaria
+      const estudiante = response.data.informacion && response.data.informacion.length > 0 
+        ? response.data.informacion[0] 
+        : null;
+      
+      if (estudiante) {
+        return {
+          valido: true,
+          alumno: {
+            id: estudiante.id || null,
+            nombre: estudiante.nombre || '',
+            matricula: estudiante.matricula || matricula
+          },
+          tipo: 'alumno'
+        };
+      }
+    }
+    
+    // Si no se encontró el estudiante o la respuesta no fue exitosa
+    return { valido: false };
+    
+  } catch (err) {
+    console.error(`Error al validar matrícula de alumno ${matricula}:`, err);
+    // En caso de error en la API, devolvemos que no es válido
+    return { valido: false, error: err.message };
+  }
+}
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -223,5 +298,7 @@ module.exports = {
   deleteUser,
   getAdminUsers,
   updateGuardType,
-  getGuardUsers
+  getGuardUsers,
+  validarCodigoEmpleado,
+  validarMatriculaAlumno
 };

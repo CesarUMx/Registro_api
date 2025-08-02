@@ -46,6 +46,9 @@ router.get('/:id', verifyJWT, allowSupervisorAccess, getUserById);
 // Ruta específica para que los supervisores actualicen solo el tipo de guardia
 router.put('/:id/guard-type', verifyJWT, requireRole('guardia'), requireGuardType('supervisor'), updateGuardType);
 
+// Ruta para que los guardias actualicen su propio tipo de guardia
+router.put('/update-guard-type', verifyJWT, requireRole('guardia'), updateGuardType);
+
 // Rutas para crear, actualizar y eliminar usuarios (sysadmin y supervisores para crear guardias)
 router.post('/', verifyJWT, allowSupervisorAccess, createUser);
 router.put('/:id', verifyJWT, requireRole('sysadmin'), updateUser);
