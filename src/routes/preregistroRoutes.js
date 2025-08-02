@@ -7,6 +7,9 @@ const {
   postCrearPreregistro,
   getPreregistros,
   getPreregistroPorId,
+  getPreregistroPorCodigo,
+  getVisitantePreregistro,
+  getVehiculoPreregistro,
   postGenerarLinkUnico,
   postEnviarPorCorreo,
   getPreregistroPorToken,
@@ -53,6 +56,9 @@ router.post('/', requireRole('admin', 'sysadmin'), postCrearPreregistro);
 // POST /api/preregistros/list - Obtener lista de preregistros con paginación
 router.post('/list', requireRole('admin', 'sysadmin', 'guardia'), getPreregistros);
 
+// GET /api/preregistros/codigo/:codigo - Obtener preregistro por código
+router.get('/codigo/:codigo', requireRole('admin', 'sysadmin', 'guardia'), getPreregistroPorCodigo);
+
 // GET /api/preregistros/:id - Obtener preregistro por ID
 router.get('/:id', requireRole('admin', 'sysadmin', 'guardia'), getPreregistroPorId);
 
@@ -89,6 +95,18 @@ router.post('/cargar-foto-vehiculo',
   requireRole('admin', 'sysadmin', 'guardia'),
   upload.single('foto_placa'),
   postCargarFotoVehiculo
+);
+
+// GET /api/preregistros/:id/visitantes/:numero - Obtener visitante específico de un preregistro
+router.get('/:id/visitantes/:numero',
+  requireRole('admin', 'sysadmin', 'guardia'),
+  getVisitantePreregistro
+);
+
+// GET /api/preregistros/:id/vehiculos/:numero - Obtener vehículo específico de un preregistro
+router.get('/:id/vehiculos/:numero',
+  requireRole('admin', 'sysadmin', 'guardia'),
+  getVehiculoPreregistro
 );
 
 // GET /api/preregistros/:id/bitacora - Obtener bitácora completa de un preregistro

@@ -1,19 +1,15 @@
 const { 
-  getAllPreregistros,
   getPreregistroById,
-  createPreregistro,
-  updatePreregistro,
-  deletePreregistro,
   obtenerPreregistros,
   obtenerPreregistroPorId,
+  obtenerPreregistroPorCodigo,
+  obtenerVisitantePreregistro,
+  obtenerVehiculoPreregistro,
   crearPreregistro,
   obtenerPreregistroPorToken,
-  actualizarEstadoToken,
   completarPreregistroConVisitantesYVehiculos,
   actualizarEstadoPreregistro,
-  verificarFotosExistentes,
   verificarFotosFaltantes,
-  iniciarPreregistroConFotos,
   cargarFotoVisitante,
   cargarFotoVehiculo,
   iniciarPreregistroMultiple
@@ -838,10 +834,16 @@ async function patchIniciarPreregistro(req, res) {
     // 2. Obtener datos actualizados del preregistro
     const preregistroCompleto = await getPreregistroById(id);
     
+    // 3. Obtener las etiquetas generadas para los visitantes
+    const visitantesConEtiquetas = await obtenerEtiquetasVisitantes(id, visitantes);
+    
     res.json({
       ok: true,
       message: 'Preregistro iniciado exitosamente',
-      data: preregistroCompleto
+      data: {
+        ...preregistroCompleto,
+        resultadosVisitantes: visitantesConEtiquetas
+      }
     });
     
   } catch (error) {
@@ -858,7 +860,7 @@ async function patchIniciarPreregistro(req, res) {
  * Verificar qué fotos faltan para iniciar un preregistro
  */
 async function getVerificarFotosFaltantes(req, res) {
-  try {
+try {
     const { id } = req.params;
     
     const resultado = await verificarFotosFaltantes(id);
@@ -983,10 +985,141 @@ async function postCargarFotoVehiculo(req, res) {
   }
 }
 
+/**
+ * Obtener preregistro por código
+ */
+async function getPreregistroPorCodigo(req, res) {
+  try {
+    const { codigo } = req.params;
+
+    if (!codigo) {
+      const error = new Error('Código de preregistro inválido');
+      error.status = 400;
+      throw error;
+    }
+
+    const preregistro = await obtenerPreregistroPorCodigo(codigo);
+
+    res.json({
+      ok: true,
+      data: preregistro
+    });
+
+  } catch (error) {
+    console.error('Error en getPreregistroPorCodigo:', {
+      message: error.message,
+      code: error.code,
+      userId: req.user?.userId,
+      codigo: req.params.codigo
+    });
+    
+    if (error.status === 404) {
+      return res.status(404).json({
+        ok: false,
+        error: `No se encontró el preregistro con código ${req.params.codigo}`,
+        code: 'NOT_FOUND'
+      });
+    }
+    
+    return res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error al obtener el preregistro',
+      code: error.code || 'QUERY_ERROR'
+    });
+  }
+}
+
+/**
+ * Obtener visitante específico de un preregistro por su número
+ */
+async function getVisitantePreregistro(req, res) {
+  try {
+    const { id, numero } = req.params;
+    
+    if (!id || isNaN(parseInt(id))) {
+      const error = new Error('ID de preregistro inválido');
+      error.status = 400;
+      throw error;
+    }
+    
+    if (!numero) {
+      const error = new Error('Número de visitante inválido');
+      error.status = 400;
+      throw error;
+    }
+    
+    const visitante = await obtenerVisitantePreregistro(parseInt(id), numero);
+    
+    res.json({
+      ok: true,
+      data: visitante
+    });
+    
+  } catch (error) {
+    console.error('Error en getVisitantePreregistro:', {
+      message: error.message,
+      code: error.code,
+      userId: req.user?.userId,
+      preregistroId: req.params.id,
+      numeroVisitante: req.params.numero
+    });
+    
+    return res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error al obtener el visitante',
+      code: error.code || 'QUERY_ERROR'
+    });
+  }
+}
+
+/**
+ * Obtener vehículo específico de un preregistro por su número
+ */
+async function getVehiculoPreregistro(req, res) {
+  try {
+    const { id, numero } = req.params;
+    
+    if (!id || isNaN(parseInt(id))) {
+      const error = new Error('ID de preregistro inválido');
+      error.status = 400;
+      throw error;
+    }
+    
+    if (!numero) {
+      const error = new Error('Número de vehículo inválido');
+      error.status = 400;
+      throw error;
+    }
+    
+    const vehiculo = await obtenerVehiculoPreregistro(parseInt(id), numero);
+    
+    res.json({
+      ok: true,
+      data: vehiculo
+    });
+    
+  } catch (error) {
+    console.error('Error en getVehiculoPreregistro:', {
+      message: error.message,
+      code: error.code,
+      userId: req.user?.userId,
+      preregistroId: req.params.id,
+      numeroVehiculo: req.params.numero
+    });
+    
+    return res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error al obtener el vehículo',
+      code: error.code || 'QUERY_ERROR'
+    });
+  }
+}
+
 module.exports = {
   postCrearPreregistro,
   getPreregistros,
   getPreregistroPorId,
+  getPreregistroPorCodigo,
   postGenerarLinkUnico,
   postEnviarPorCorreo,
   getPreregistroPorToken,
@@ -996,6 +1129,8 @@ module.exports = {
   getVerificarFotosFaltantes,
   postCargarFotoVisitante,
   postCargarFotoVehiculo,
+  getVisitantePreregistro,
+  getVehiculoPreregistro,
   buscarVisitantesPublico,
   crearVisitantePublico,
   buscarVehiculoPublico,

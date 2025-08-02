@@ -14,6 +14,7 @@ const registroRouter = require('./routes/registroRoutes');
 const capturaRouter = require('./routes/capturaRoutes');
 const preregistroRouter = require('./routes/preregistroRoutes');
 const preregistroPublicoRouter = require('./routes/preregistroPublicoRoutes');
+const bitacoraRouter = require('./routes/bitacoraRoutes');
 // Importar el programador de alertas de demora
 const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 
@@ -70,6 +71,8 @@ app.use('/api/vehiculos', vehiculoRouter);
 app.use('/api/visitantes', visitanteRouter);
 app.use('/api/registro', registroRouter);
 app.use('/api/preregistros', preregistroRouter);
+app.use('/api/eventos', require('./routes/eventoRoutes'));
+app.use('/api/bitacora', bitacoraRouter);
 // Para cualquier ruta no definida:
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta no encontrada' });

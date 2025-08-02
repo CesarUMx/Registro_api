@@ -1006,13 +1006,17 @@ async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaI
         throw new Error(`No se encontró el preregistro con ID ${preregistroId}`);
       }
       
-      // 2. Registrar entrada_caseta en la bitácora para cada visitante
+      const preregistro = preregistroResult.rows[0];
+      const codigoPreregistro = preregistro.codigo;
+      
+      // 2. Registrar entrada_caseta en la bitácora para cada visitante y generar etiquetas
       const resultadosVisitantes = [];
+      let visitanteCounter = 1; // Contador para generar etiquetas secuenciales
       
       for (const visitanteId of visitantesIds) {
         // Verificar que el visitante exista y esté asociado al preregistro
         const checkVisitanteQuery = `
-          SELECT v.id 
+          SELECT v.*, pv.etiqueta
           FROM visitantes v
           JOIN preregistro_visitantes pv ON v.id = pv.visitante_id
           WHERE pv.preregistro_id = $1 AND v.id = $2
@@ -1023,6 +1027,27 @@ async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaI
         if (visitanteResult.rows.length === 0) {
           console.warn(`El visitante con ID ${visitanteId} no está asociado al preregistro ${preregistroId}`);
           continue; // Saltar este visitante y continuar con el siguiente
+        }
+        
+        const visitante = visitanteResult.rows[0];
+        
+        // Generar etiqueta si no existe
+        let etiqueta = visitante.etiqueta;
+        if (!etiqueta) {
+          // Importar la función generateVisitorTag
+          const { generateVisitorTag } = require('../utils/codeGenerator');
+          etiqueta = generateVisitorTag(codigoPreregistro, visitanteCounter);
+          
+          // Actualizar la etiqueta en la tabla preregistro_visitantes
+          const updateEtiquetaQuery = `
+            UPDATE preregistro_visitantes
+            SET etiqueta = $1
+            WHERE preregistro_id = $2 AND visitante_id = $3
+            RETURNING *
+          `;
+          
+          await client.query(updateEtiquetaQuery, [etiqueta, preregistroId, visitanteId]);
+          visitanteCounter++;
         }
         
         // Registrar entrada_caseta en la bitácora para el visitante
@@ -1046,6 +1071,7 @@ async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaI
         
         resultadosVisitantes.push({
           visitante_id: visitanteId,
+          etiqueta: etiqueta,
           bitacora: bitacoraVisitanteResult.rows[0]
         });
       }
@@ -1099,11 +1125,235 @@ async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaI
   });
 }
 
+/**
+ * Obtener un visitante por su ID
+ * @param {number} id - ID del visitante
+ * @returns {Promise<Object>} - Datos del visitante
+ */
+async function getVisitanteById(id) {
+  try {
+    const query = `
+      SELECT 
+        pv.*,
+        v.nombre,
+        v.apellido,
+        v.email,
+        v.telefono,
+        v.foto_ine,
+        v.foto_persona,
+        p.id AS preregistro_id,
+        p.status AS preregistro_status
+      FROM 
+        preregistro_visitantes pv
+      JOIN 
+        visitantes v ON pv.visitante_id = v.id
+      JOIN 
+        preregistros p ON pv.preregistro_id = p.id
+      WHERE 
+        pv.visitante_id = $1
+      ORDER BY 
+        p.created_at DESC
+      LIMIT 1
+    `;
+    
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error al obtener visitante por ID:', error);
+    throw error;
+  }
+}
+
+/**
+ * Obtener un vehículo por su ID
+ * @param {number} id - ID del vehículo
+ * @returns {Promise<Object>} - Datos del vehículo
+ */
+async function getVehiculoById(id) {
+  try {
+    const query = `
+      SELECT 
+        pv.*,
+        v.placa,
+        v.marca,
+        v.modelo,
+        v.color,
+        v.foto_placa,
+        p.id AS preregistro_id,
+        p.status AS preregistro_status
+      FROM 
+        preregistro_vehiculos pv
+      JOIN 
+        vehiculos v ON pv.vehiculo_id = v.id
+      JOIN 
+        preregistros p ON pv.preregistro_id = p.id
+      WHERE 
+        pv.vehiculo_id = $1
+      ORDER BY 
+        p.created_at DESC
+      LIMIT 1
+    `;
+    
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error al obtener vehículo por ID:', error);
+    throw error;
+  }
+}
+
+/**
+ * Actualizar el estatus de un preregistro
+ * @param {number} preregistroId - ID del preregistro
+ * @param {string} estatus - Nuevo estatus
+ * @returns {Promise<Object>} - Preregistro actualizado
+ */
+async function updatePreregistroStatus(preregistroId, estatus) {
+  try {
+    const client = await pool.connect();
+    try {
+      const query = `
+        UPDATE preregistros
+        SET estatus = $1
+        WHERE id = $2
+        RETURNING *
+      `;
+      
+      const result = await client.query(query, [estatus, preregistroId]);
+      return result.rows[0];
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error al actualizar estatus del preregistro:', error);
+    throw error;
+  }
+}
+
+/**
+ * Obtener preregistro por código
+ * @param {string} codigo - Código del preregistro (ej: PRE29YAM)
+ * @returns {Promise<Object>} - Datos del preregistro con sus visitantes y vehículos
+ */
+async function obtenerPreregistroPorCodigo(codigo) {
+  try {
+    // Obtener el preregistro por código
+    const preregistroResult = await pool.query(
+      `SELECT p.*, u.nombre as admin_nombre, u.apellido as admin_apellido
+       FROM preregistros p
+       LEFT JOIN usuarios u ON p.admin_id = u.id
+       WHERE p.codigo = $1`,
+      [codigo]
+    );
+    
+    if (preregistroResult.rows.length === 0) {
+      const error = new Error(`No se encontró el preregistro con código ${codigo}`);
+      error.status = 404;
+      throw error;
+    }
+    
+    const preregistro = preregistroResult.rows[0];
+    
+    // Obtener visitantes asociados
+    const visitantesResult = await pool.query(
+      `SELECT v.*, pv.codigo_visitante, pv.id as preregistro_visitante_id
+       FROM visitantes v
+       JOIN preregistro_visitantes pv ON v.id = pv.visitante_id
+       WHERE pv.preregistro_id = $1
+       ORDER BY pv.id`,
+      [preregistro.id]
+    );
+    
+    // Obtener vehículos asociados
+    const vehiculosResult = await pool.query(
+      `SELECT v.*, pv.numero_marbete, pv.id as preregistro_vehiculo_id
+       FROM vehiculos v
+       JOIN preregistro_vehiculos pv ON v.id = pv.vehiculo_id
+       WHERE pv.preregistro_id = $1
+       ORDER BY pv.id`,
+      [preregistro.id]
+    );
+    
+    // Formatear el resultado
+    return {
+      ...preregistro,
+      admin_nombre_completo: `${preregistro.admin_nombre || ''} ${preregistro.admin_apellido || ''}`.trim(),
+      visitantes: visitantesResult.rows,
+      vehiculos: vehiculosResult.rows
+    };
+    
+  } catch (error) {
+    console.error('Error al obtener preregistro por código:', error);
+    throw error;
+  }
+}
+
+/**
+ * Obtener visitante específico de un preregistro por su número
+ * @param {number} preregistroId - ID del preregistro
+ * @param {string} numeroVisitante - Número del visitante (ej: V01)
+ * @returns {Promise<Object>} - Datos del visitante
+ */
+async function obtenerVisitantePreregistro(preregistroId, numeroVisitante) {
+  try {
+    const result = await pool.query(
+      `SELECT v.*, pv.codigo_visitante, pv.id as preregistro_visitante_id
+       FROM visitantes v
+       JOIN preregistro_visitantes pv ON v.id = pv.visitante_id
+       WHERE pv.preregistro_id = $1 AND pv.codigo_visitante LIKE $2
+       LIMIT 1`,
+      [preregistroId, `%${numeroVisitante}`]
+    );
+    
+    if (result.rows.length === 0) {
+      const error = new Error(`No se encontró el visitante ${numeroVisitante} para el preregistro ${preregistroId}`);
+      error.status = 404;
+      throw error;
+    }
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error al obtener visitante de preregistro:', error);
+    throw error;
+  }
+}
+
+/**
+ * Obtener vehículo específico de un preregistro por su número
+ * @param {number} preregistroId - ID del preregistro
+ * @param {string} numeroVehiculo - Número del vehículo (ej: A01)
+ * @returns {Promise<Object>} - Datos del vehículo
+ */
+async function obtenerVehiculoPreregistro(preregistroId, numeroVehiculo) {
+  try {
+    const result = await pool.query(
+      `SELECT v.*, pv.numero_marbete, pv.id as preregistro_vehiculo_id
+       FROM vehiculos v
+       JOIN preregistro_vehiculos pv ON v.id = pv.vehiculo_id
+       WHERE pv.preregistro_id = $1 AND pv.numero_marbete LIKE $2
+       LIMIT 1`,
+      [preregistroId, `%${numeroVehiculo}`]
+    );
+    
+    if (result.rows.length === 0) {
+      const error = new Error(`No se encontró el vehículo ${numeroVehiculo} para el preregistro ${preregistroId}`);
+      error.status = 404;
+      throw error;
+    }
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Error al obtener vehículo de preregistro:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   // Funciones CRUD básicas (manteniendo nombres que usa el controlador)
   crearPreregistro,
   obtenerPreregistros,
   obtenerPreregistroPorId,
+  obtenerPreregistroPorCodigo,
   actualizarEstadoPreregistro,
   
   // Alias para compatibilidad con controlador
@@ -1124,5 +1374,13 @@ module.exports = {
   iniciarPreregistroConFotos,
   cargarFotoVisitante,
   cargarFotoVehiculo,
-  iniciarPreregistroMultiple
+  iniciarPreregistroMultiple,
+  
+  // Funciones para eventos por escaneo QR
+  getVisitanteById,
+  getVehiculoById,
+  updatePreregistroStatus,
+  obtenerPreregistroPorCodigo,
+  obtenerVisitantePreregistro,
+  obtenerVehiculoPreregistro
 };
