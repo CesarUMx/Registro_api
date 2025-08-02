@@ -7,13 +7,14 @@ const {
   updateWithBuildingEntryByGuard,
   registerBuildingExitByGuard,
   registerGateExitByGuard,
-  createBuildingRegistroByGuard,
-  completeRegistroAtGate,
-  findRegistroByPreregistroCode,
   listRegistros,
   getRegistroById,
   updateRegistroById,
-  deleteRegistroById
+  deleteRegistroById,
+  getVisitantesByRegistroId,
+  createBuildingRegistroByGuard,
+  updateWithBuildingEntryMultipleVisitors,
+  updateDriverVisitorStatus
 } = require('../controllers/registroController');
 
 // Crear registro en caseta (primer filtro) con conductor opcional
@@ -43,6 +44,22 @@ router.put(
   updateWithBuildingEntryByGuard
 );
 
+// Registrar múltiples visitantes y entrada al edificio
+router.put(
+  '/:id/building-entry-multiple',
+  verifyJWT,
+  requireRole('guardia'),
+  updateWithBuildingEntryMultipleVisitors
+);
+
+// Actualizar el estado del conductor como visitante
+router.put(
+  '/:id/update-driver-visitor',
+  verifyJWT,
+  requireRole('guardia'),
+  updateDriverVisitorStatus
+);
+
 // Registrar salida del edificio
 router.put(
   '/:id/building-exit',
@@ -57,14 +74,6 @@ router.put(
   verifyJWT,
   requireRole('guardia'),
   registerGateExitByGuard
-);
-
-// Completar registro directamente en la caseta (sin entrar al edificio)
-router.put(
-  '/:id/complete-at-gate',
-  verifyJWT,
-  requireRole('guardia'),
-  completeRegistroAtGate
 );
 
 // Crear registro directamente en la entrada al edificio (sin pasar por caseta)
@@ -97,12 +106,13 @@ router.get(
 );
 
 // Buscar registro por código de preregistro
-router.get(
-  '/preregistro/:code',
-  verifyJWT,
-  requireRole('guardia'),
-  findRegistroByPreregistroCode
-);
+// NOTA: Esta ruta está comentada porque la función findRegistroByPreregistroCode no está definida en el controlador
+// router.get(
+//   '/preregistro/:code',
+//   verifyJWT,
+//   requireRole('guardia'),
+//   findRegistroByPreregistroCode
+// );
 
 // Listar (admin/sysadmin)
 router.get(
@@ -120,7 +130,10 @@ router.get(
   getRegistroById
 );
 
-// Actualizar (admin/sysadmin)
+// Obtener los visitantes asociados a un registro
+router.get('/:id/visitantes', verifyJWT, getVisitantesByRegistroId);
+
+// Actualizar un registro por su ID
 router.put(
   '/:id',
   verifyJWT,
@@ -128,7 +141,7 @@ router.put(
   updateRegistroById
 );
 
-// Eliminar (solo sysadmin)
+// Eliminar un registro por su ID
 router.delete(
   '/:id',
   verifyJWT,

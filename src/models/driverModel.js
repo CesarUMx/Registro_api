@@ -322,6 +322,93 @@ async function getDriversByVisitorId(visitorId) {
   }
 }
 
+/**
+ * Busca un conductor por su código de etiqueta
+ * @param {string} driverTag - Código de etiqueta del conductor
+ * @returns {Promise<Object|null>} El conductor encontrado o null
+ * @throws {DriverError} Si ocurre un error
+ */
+async function getDriverByTag(driverTag) {
+  try {
+    if (!driverTag || typeof driverTag !== 'string') {
+      throw new DriverError(
+        'El código de etiqueta del conductor es requerido y debe ser una cadena de texto',
+        'INVALID_DRIVER_TAG',
+        400
+      );
+    }
+    
+    // Buscar en la tabla de relación registro_visitantes para encontrar el driver_id asociado al código
+    // y también verificar si es conductor-visitante
+    const relationQuery = `
+      SELECT 
+        rv.driver_id,
+        rv.is_driver_visitor,
+        rv.driver_visitor_id,
+        rv.registro_id,
+        r.registration_code
+      FROM registro_visitantes rv
+      JOIN registro r ON rv.registro_id = r.id
+      WHERE rv.driver_tag = $1
+      LIMIT 1
+    `;
+    
+    const relationResult = await pool.query(relationQuery, [driverTag]);
+    
+    if (relationResult.rows.length === 0) {
+      return null;
+    }
+    
+    const { driver_id, is_driver_visitor, driver_visitor_id, registro_id, registration_code } = relationResult.rows[0];
+    
+    // Obtener los datos completos del conductor
+    const driverQuery = `
+      SELECT * FROM drivers
+      WHERE id = $1
+    `;
+    
+    const { rows } = await pool.query(driverQuery, [driver_id]);
+    
+    if (rows.length === 0) {
+      return null;
+    }
+    
+    const driver = rows[0];
+    
+    // Añadir información adicional sobre si es conductor-visitante
+    driver.is_driver_visitor = is_driver_visitor || false;
+    driver.driver_visitor_id = driver_visitor_id;
+    driver.registro_id = registro_id;
+    driver.registration_code = registration_code;
+    
+    // Si es conductor-visitante, obtener los datos del visitante asociado
+    if (is_driver_visitor && driver_visitor_id) {
+      const visitorQuery = `
+        SELECT * FROM visitors
+        WHERE id = $1
+      `;
+      
+      const visitorResult = await pool.query(visitorQuery, [driver_visitor_id]);
+      
+      if (visitorResult.rows.length > 0) {
+        driver.visitor_data = visitorResult.rows[0];
+      }
+    }
+    
+    return driver;
+  } catch (error) {
+    if (error instanceof DriverError) {
+      throw error;
+    }
+    console.error('Error en getDriverByTag:', error);
+    throw new DriverError(
+      `Error al buscar conductor por código: ${error.message}`,
+      'DRIVER_SEARCH_ERROR',
+      500
+    );
+  }
+}
+
 module.exports = {
   getAllDrivers,
   getDriverById,
@@ -330,5 +417,6 @@ module.exports = {
   deleteDriver,
   searchDrivers,
   getDriversByVisitorId,
+  getDriverByTag,
   DriverError
 };
