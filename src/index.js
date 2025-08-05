@@ -22,13 +22,7 @@ const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraS
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
-      process.env.FRONTEND_URL || 'http://localhost:5173',
-      'http://localhost:3000',
-      'http://172.18.0.92:5173',
-      'http://localhost:5173',
-      'https://sicav.mondragonmexico.edu.mx/',
-      'http://189.206.100.75:5173',
-      'https://189.206.100.75:5173'
+      process.env.FRONTEND_URL
     ];
     // Permitir solicitudes sin origen (como aplicaciones móviles o curl)
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
