@@ -12,7 +12,8 @@ const {
   verificarFotosFaltantes,
   cargarFotoVisitante,
   cargarFotoVehiculo,
-  iniciarPreregistroMultiple
+  iniciarPreregistroMultiple,
+  obtenerEtiquetasVisitantes
 } = require('../models/preregistroModel');
 const { checkRequiredFields, handleError, normalizeName, withTransaction } = require('../utils/controllerHelpers');
 
@@ -817,6 +818,30 @@ async function patchIniciarPreregistro(req, res) {
       return res.status(400).json({ 
         ok: false, 
         message: 'Se requiere al menos un visitante' 
+      });
+    }
+
+    // Obtener el preregistro para verificar la hora de entrada programada
+    const preregistro = await obtenerPreregistroPorId(parseInt(id));
+    if (!preregistro) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Preregistro no encontrado'
+      });
+    }
+
+    // Verificar que la hora actual no sea menor a 15 minutos antes de la hora de entrada programada
+    const now = new Date();
+    const scheduledEntryTime = new Date(preregistro.scheduled_entry_time);
+    const minTimeBeforeEntry = new Date(scheduledEntryTime.getTime() - (15 * 60 * 1000)); // 15 minutos antes
+
+    if (now < minTimeBeforeEntry) {
+      return res.status(400).json({
+        ok: false,
+        message: 'No se puede iniciar el preregistro hasta 15 minutos antes de la hora de entrada programada',
+        scheduledEntryTime: preregistro.scheduled_entry_time,
+        currentTime: now.toISOString(),
+        earliestAllowedTime: minTimeBeforeEntry.toISOString()
       });
     }
 

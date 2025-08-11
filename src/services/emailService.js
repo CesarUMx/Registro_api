@@ -519,10 +519,69 @@ async function enviarLinkUnicoPreregistro(email, token, preregistro) {
   }
 }
 
+/**
+ * Envía un correo electrónico de alerta al creador del preregistro cuando está próximo a expirar
+ * @param {string} email - Correo electrónico del creador del preregistro
+ * @param {string} nombreAdmin - Nombre del administrador que creó el preregistro
+ * @param {string} codigoPreregistro - Código del preregistro
+ * @param {string} motivo - Motivo de la visita
+ * @param {Date} fechaExpiracion - Fecha y hora de expiración del preregistro
+ * @returns {Promise} - Promesa que se resuelve cuando se envía el correo
+ */
+async function enviarAlertaPreregistroProximoExpirar(email, nombreAdmin, codigoPreregistro, motivo, fechaExpiracion) {
+  try {
+    const fechaFormateada = new Date(fechaExpiracion).toLocaleString('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'sistema.vigilancia@umx.com',
+      to: email,
+      subject: `⚠️ Alerta: Preregistro ${codigoPreregistro} próximo a expirar`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+          <h2 style="color: #ff4d00; border-bottom: 1px solid #eee; padding-bottom: 10px;">Alerta de Preregistro Próximo a Expirar</h2>
+          
+          <p>Estimado(a) <strong>${nombreAdmin}</strong>,</p>
+          
+          <p>Le informamos que un preregistro creado por usted está próximo a expirar en <strong>15 minutos</strong>.</p>
+          
+          <div style="background-color: #fff4e6; padding: 15px; border-left: 4px solid #ff4d00; border-radius: 5px; margin: 15px 0;">
+            <p><strong>Detalles del preregistro:</strong></p>
+            <ul style="list-style-type: none; padding-left: 5px;">
+              <li><strong>Código:</strong> ${codigoPreregistro}</li>
+              <li><strong>Motivo:</strong> ${motivo}</li>
+              <li><strong>Expira el:</strong> ${fechaFormateada}</li>
+            </ul>
+          </div>
+          
+          <p>Si el visitante aún no se a retirado, considere extender la fecha de expiración o crear un nuevo preregistro.</p>
+          
+          <p style="font-size: 12px; color: #777; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
+            Este es un mensaje automático del Sistema de Vigilancia. Por favor no responda a este correo.
+          </p>
+        </div>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Correo de alerta de preregistro próximo a expirar enviado:', info.messageId);
+    return info;
+  } catch (error) {
+    console.error('Error al enviar correo de alerta de preregistro próximo a expirar:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   enviarAlertaVisita,
   enviarNotificacionSalida,
   enviarAlertaVisitantesDemorados,
   enviarPreregistroQR,
-  enviarLinkUnicoPreregistro
+  enviarLinkUnicoPreregistro,
+  enviarAlertaPreregistroProximoExpirar
 };
