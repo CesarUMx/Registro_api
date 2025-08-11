@@ -15,17 +15,15 @@ const capturaRouter = require('./routes/capturaRoutes');
 const preregistroRouter = require('./routes/preregistroRoutes');
 const preregistroPublicoRouter = require('./routes/preregistroPublicoRoutes');
 const bitacoraRouter = require('./routes/bitacoraRoutes');
-// Importar el programador de alertas de demora
+// Importar los programadores de tareas
 const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
+const { iniciarProgramadorFinalizarPreregistros } = require('./schedulers/finalizarPreregistrosScheduler');
 
 // Configuración CORS
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
-      process.env.FRONTEND_URL || 'http://localhost:5173',
-      'http://localhost:3000',
-      'http://172.18.0.92:3000',
-      'http://localhost:5173',
+      process.env.FRONTEND_URL
     ];
     // Permitir solicitudes sin origen (como aplicaciones móviles o curl)
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
@@ -85,13 +83,16 @@ const PORT = process.env.PORT || 3002;
 app.listen(PORT, async () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
   
-  // Iniciar el programador de alertas de demora
-  // Como ahora es una función asíncrona, usamos await para esperar a que termine
-  console.log('Iniciando programador de alertas de demora...');
+  // Iniciar los programadores de tareas
+  // Como son funciones asíncronas, usamos await para esperar a que terminen
+  console.log('Iniciando programadores de tareas...');
   try {
     await iniciarProgramadorAlertasDemora();
     console.log('Programador de alertas de demora iniciado correctamente');
+    
+    await iniciarProgramadorFinalizarPreregistros();
+    console.log('Programador para finalizar preregistros iniciado correctamente');
   } catch (error) {
-    console.error('Error al iniciar el programador de alertas de demora:', error);
+    console.error('Error al iniciar los programadores de tareas:', error);
   }
 });

@@ -68,32 +68,8 @@ async function getUltimoEventoRegistrado(req, res) {
  */
 async function registrarEvento(req, res) {
   try {
-    const { preregistro_id, tipo_evento, visitante_id, vehiculo_id, guardia_id, timestamp, notas } = req.body;
-    
-    // Validar campos obligatorios
-    if (!preregistro_id || !tipo_evento || !guardia_id) {
-      return res.status(400).json({
-        ok: false,
-        message: 'Los campos preregistro_id, tipo_evento y guardia_id son obligatorios'
-      });
-    }
-    
-    // Validar que al menos uno de visitante_id o vehiculo_id esté presente
-    if (!visitante_id && !vehiculo_id) {
-      return res.status(400).json({
-        ok: false,
-        message: 'Se requiere al menos uno de los campos visitante_id o vehiculo_id'
-      });
-    }
-    
-    // Validar que el tipo de evento sea válido
-    const tiposEventoValidos = ['entrada_caseta', 'salida_caseta', 'entrada_edificio', 'salida_edificio'];
-    if (!tiposEventoValidos.includes(tipo_evento)) {
-      return res.status(400).json({
-        ok: false,
-        message: `Tipo de evento no válido. Valores permitidos: ${tiposEventoValidos.join(', ')}`
-      });
-    }
+    const { preregistro_id, visitante_id, vehiculo_id, notas } = req.body;
+    const tipo = req.user.guard_type;
     
     // Obtener el último evento para validar la transición
     const params = {};
@@ -104,51 +80,34 @@ async function registrarEvento(req, res) {
     const ultimoEvento = await getUltimoEvento(params);
     
     // Validar la transición de estados
-    let transicionValida = true;
-    let mensajeError = '';
-    
-    if (ultimoEvento) {
-      switch (ultimoEvento.tipo_evento) {
-        case 'entrada_caseta':
-          // Después de entrada_caseta puede ser salida_caseta o entrada_edificio
-          if (tipo_evento !== 'salida_caseta' && tipo_evento !== 'entrada_edificio') {
-            transicionValida = false;
-            mensajeError = 'Después de entrada_caseta solo puede registrarse salida_caseta o entrada_edificio';
-          }
-          break;
-        case 'salida_caseta':
-          // Después de salida_caseta solo puede ser entrada_caseta
-          if (tipo_evento !== 'entrada_caseta') {
-            transicionValida = false;
-            mensajeError = 'Después de salida_caseta solo puede registrarse entrada_caseta';
-          }
-          break;
-        case 'entrada_edificio':
-          // Después de entrada_edificio solo puede ser salida_edificio
-          if (tipo_evento !== 'salida_edificio') {
-            transicionValida = false;
-            mensajeError = 'Después de entrada_edificio solo puede registrarse salida_edificio';
-          }
-          break;
-        case 'salida_edificio':
-          // Después de salida_edificio puede ser entrada_edificio o salida_caseta
-          if (tipo_evento !== 'entrada_edificio' && tipo_evento !== 'salida_caseta') {
-            transicionValida = false;
-            mensajeError = 'Después de salida_edificio solo puede registrarse entrada_edificio o salida_caseta';
-          }
-          break;
+    let siguienteEstado = '';
+
+    if (tipo === 'caseta') {
+      if (ultimoEvento && ultimoEvento.tipo_evento === 'entrada_caseta') {
+        siguienteEstado = 'salida_caseta';
+      } else if (ultimoEvento && ultimoEvento.tipo_evento === 'salida_caseta') {
+        siguienteEstado = 'entrada_caseta';
+      } else if (ultimoEvento && ultimoEvento.tipo_evento === 'salida_edificio') {
+        siguienteEstado = 'salida_caseta';
+      } else {
+        siguienteEstado = 'null';
       }
-    } else if (tipo_evento !== 'entrada_caseta') {
-      // Si no hay evento previo, solo puede ser entrada_caseta
-      transicionValida = false;
-      mensajeError = 'El primer evento debe ser entrada_caseta';
+    } else if (tipo === 'entrada') {
+      if (ultimoEvento && ultimoEvento.tipo_evento === 'entrada_edificio') {
+        siguienteEstado = 'salida_edificio';
+      } else if (ultimoEvento && ultimoEvento.tipo_evento === 'salida_edificio') {
+        siguienteEstado = 'entrada_edificio';
+      } else if (ultimoEvento && ultimoEvento.tipo_evento === 'entrada_caseta') {
+        siguienteEstado = 'entrada_edificio';
+      } else {
+        siguienteEstado = 'null';
+      }
     }
-    
-    if (!transicionValida) {
+
+    if (siguienteEstado === 'null') {
       return res.status(400).json({
         ok: false,
-        message: mensajeError,
-        ultimoEvento
+        error: 'No se puede registrar un evento'
       });
     }
     
@@ -157,8 +116,8 @@ async function registrarEvento(req, res) {
       preregistro_id,
       visitante_id,
       vehiculo_id,
-      tipo_evento,
-      usuario_id: guardia_id,
+      tipo_evento: siguienteEstado,
+      usuario_id: req.user.userId,
       detalles: notas || ''
     });
     

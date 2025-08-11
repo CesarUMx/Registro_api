@@ -10,7 +10,7 @@ const { generateVisitorTag } = require('../utils/codeGenerator');
 const getSiguienteEvento = async (req, res) => {
   try {
     const { tipo, id } = req.params;
-    const { role } = req.user; // Tipo de guardia desde el token JWT
+    const { role } = req.user.guard_type; // Tipo de guardia desde el token JWT
 
     // Validar tipo
     if (!['visitantes', 'vehiculos', 'registros'].includes(tipo)) {
@@ -72,8 +72,11 @@ const getSiguienteEvento = async (req, res) => {
     // Determinar el siguiente evento según el estatus actual y el tipo de guardia
     let siguienteEvento;
 
+    console.log(role);
+    console.log(estatusActual);
+    console.log(tipo);
     // Guardia de edificio (entrada_edificio)
-    if (role === 'guardia_edificio') {
+    if (role === 'entrada') {
       if (estatusActual === 'entrada_caseta') {
         siguienteEvento = {
           tipo: 'entrada_edificio',
@@ -94,7 +97,7 @@ const getSiguienteEvento = async (req, res) => {
       }
     } 
     // Guardia de caseta
-    else if (role === 'guardia_caseta') {
+    else if (role === 'caseta') {
       if (!estatusActual || estatusActual === 'creacion') {
         siguienteEvento = {
           tipo: 'entrada_caseta',
@@ -121,52 +124,7 @@ const getSiguienteEvento = async (req, res) => {
       }
     }
     // Supervisor (puede hacer cualquier acción)
-    else if (role === 'supervisor' || role === 'admin') {
-      // Determinar todas las opciones disponibles según el estatus actual
-      const opciones = [];
-      
-      if (!estatusActual || estatusActual === 'creacion' || estatusActual === 'salida_caseta') {
-        opciones.push({
-          tipo: 'entrada_caseta',
-          nombre: 'Entrada a Caseta',
-          descripcion: 'Registrar entrada por caseta'
-        });
-      }
-      
-      if (estatusActual === 'entrada_caseta' || estatusActual === 'salida_edificio') {
-        opciones.push({
-          tipo: 'entrada_edificio',
-          nombre: 'Entrada al Edificio',
-          descripcion: 'Registrar entrada al edificio'
-        });
-        
-        opciones.push({
-          tipo: 'salida_caseta',
-          nombre: 'Salida de Caseta',
-          descripcion: 'Registrar salida por caseta'
-        });
-      }
-      
-      if (estatusActual === 'entrada_edificio') {
-        opciones.push({
-          tipo: 'salida_edificio',
-          nombre: 'Salida del Edificio',
-          descripcion: 'Registrar salida del edificio'
-        });
-      }
-      
-      // Si hay opciones, devolver la primera como sugerencia
-      if (opciones.length > 0) {
-        siguienteEvento = opciones[0];
-        // Incluir todas las opciones para que el frontend pueda mostrarlas
-        siguienteEvento.opciones = opciones;
-      } else {
-        return res.status(400).json({
-          ok: false,
-          message: `No se puede determinar el siguiente evento para el estatus "${estatusActual}"`
-        });
-      }
-    } else {
+    else {
       return res.status(403).json({
         ok: false,
         message: 'No tiene permisos para realizar esta acción'

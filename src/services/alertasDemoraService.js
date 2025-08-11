@@ -5,7 +5,8 @@ const {
   obtenerVisitantesDemoradosSinSalirCaseta, 
   incrementarContadorAlertas, 
 } = require('../models/registroModel');
-const { enviarAlertaVisitantesDemorados } = require('./emailService');
+const { enviarAlertaVisitantesDemorados, enviarAlertaPreregistroProximoExpirar } = require('./emailService');
+const pool = require('../config/db');
 
 // Correo del administrador de seguridad
 const EMAIL_ADMIN_SEGURIDAD = 'cortiz@mondragonmexico.edu.mx';
@@ -85,7 +86,78 @@ async function verificarYNotificarVisitantesDemorados() {
   }
 }
 
+// Tiempo en minutos para alertar antes de la expiración del preregistro
+const TIEMPO_ALERTA_EXPIRACION_MINUTOS = 15;
+
+/**
+ * Verifica los preregistros próximos a expirar y envía alertas a sus creadores
+ * @returns {Promise<Object>} - Resultado de la operación
+ */
+async function verificarYNotificarPreregistrosProximosExpirar() {
+  try {
+    // Consulta para obtener preregistros que están a punto de expirar (15 minutos antes)
+    const query = `
+      SELECT p.id, p.codigo, p.reason, p.scheduled_exit_time, p.status,
+             u.email as admin_email, u.name as admin_name
+      FROM preregistros p
+      JOIN users u ON p.admin_id = u.id
+      WHERE p.status IN ('pendiente', 'iniciado')
+      AND p.scheduled_exit_time BETWEEN 
+          NOW() + INTERVAL '${TIEMPO_ALERTA_EXPIRACION_MINUTOS - 1} minutes' 
+          AND NOW() + INTERVAL '${TIEMPO_ALERTA_EXPIRACION_MINUTOS + 1} minutes'
+    `;
+    
+    const result = await pool.query(query);
+    const preregistrosProximosExpirar = result.rows;
+    
+    if (preregistrosProximosExpirar.length === 0) {
+      return { 
+        ok: true, 
+        message: 'No hay preregistros próximos a expirar que requieran alerta en este momento' 
+      };
+    }
+    
+    // Enviar alertas para cada preregistro próximo a expirar
+    for (const preregistro of preregistrosProximosExpirar) {
+      // Validar que el correo tenga un formato válido
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+      
+      if (!preregistro.admin_email || !emailRegex.test(preregistro.admin_email)) {
+        console.error(`Error: Correo inválido para el preregistro ${preregistro.codigo}: '${preregistro.admin_email}'`);
+        continue; // Saltar este preregistro y continuar con el siguiente
+      }
+      
+      try {
+        await enviarAlertaPreregistroProximoExpirar(
+          preregistro.admin_email,
+          preregistro.admin_name || 'Administrador',
+          preregistro.codigo,
+          preregistro.reason,
+          preregistro.scheduled_exit_time
+        );
+        
+        console.log(`Se envió alerta de expiración próxima para preregistro código: ${preregistro.codigo}`);
+      } catch (emailError) {
+        console.error(`Error al enviar alerta para preregistro ${preregistro.codigo}:`, emailError);
+      }
+    }
+    
+    return { 
+      ok: true, 
+      message: `Se enviaron alertas para ${preregistrosProximosExpirar.length} preregistros próximos a expirar` 
+    };
+  } catch (error) {
+    console.error('Error al verificar preregistros próximos a expirar:', error);
+    return {
+      ok: false,
+      error: error.message || 'Error al verificar preregistros próximos a expirar'
+    };
+  }
+}
+
 module.exports = {
   verificarYNotificarVisitantesDemorados,
-  TIEMPO_DEMORA_MINUTOS
+  verificarYNotificarPreregistrosProximosExpirar,
+  TIEMPO_DEMORA_MINUTOS,
+  TIEMPO_ALERTA_EXPIRACION_MINUTOS
 };
