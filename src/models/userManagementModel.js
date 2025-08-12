@@ -247,7 +247,6 @@ async function validarMatriculaAlumno(matricula) {
   try {
     const axios = require('axios');
     const Autorizacion = 'Basic ' + process.env.ACADEMIC_KEY;
-    console.log(Autorizacion);
     
     // Configuración de la petición a la API
     const config = {
