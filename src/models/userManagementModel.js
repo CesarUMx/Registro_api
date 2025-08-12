@@ -1,5 +1,7 @@
 // src/models/userManagementModel.js
 const pool = require('../config/db');
+require('dotenv').config();
+
 
 // Obtener todos los usuarios
 async function getAllUsers() {
@@ -244,6 +246,8 @@ async function validarCodigoEmpleado(codigo) {
 async function validarMatriculaAlumno(matricula) {
   try {
     const axios = require('axios');
+    const Autorizacion = 'Basic ' + process.env.ACADEMIC_KEY;
+    console.log(Autorizacion);
     
     // Configuración de la petición a la API
     const config = {
@@ -251,7 +255,7 @@ async function validarMatriculaAlumno(matricula) {
       url: `https://apis.academic.lat/v3/schoolControl/students?onlyCurrentStudents=false&pageNumber=1&rowsPerPage=1&registrationTag=${matricula}`,
       headers: { 
         'accept': 'application/json', 
-        'authorization': 'Basic TVRBd2ZHRmhOV0pqWVRJeExXRTBNelF0TkRCaU55MDVOalV3TFRBeFlUaGtZbVl6TlRRMllYeERaWE5oY2c9PTo2N0UzNUE3MzlFRUE0NjBFQjAxODNDNDJDRkIxQUQ1Ng==' 
+        'authorization': Autorizacion 
       }
     };
     
