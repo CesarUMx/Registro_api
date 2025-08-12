@@ -47,13 +47,13 @@ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 // Ruta raíz
-app.get('/', (req, res) => {
-  res.json({ ok: true, message: 'API corriendo correctamente pruebas' });
+app.get('/api', (req, res) => {
+  res.json({ ok: true, message: 'API corriendo correctamente' });
 });
 
 // Rutas de autenticación (sin prefijo /api para mantener compatibilidad con Google OAuth)
-app.use('/auth', authRouter);
-app.get('/login-failure', (req, res) => {
+app.use('/api/auth', authRouter);
+app.get('/api/login-failure', (req, res) => {
   res.status(401).json({ ok: false, error: 'Autenticación con Google fallida' });
 });
 
