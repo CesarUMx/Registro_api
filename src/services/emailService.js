@@ -598,7 +598,7 @@ async function enviarCredencialesUsuario(email, nombre, username, password) {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background-color: #fafafa;">
           <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #004987; margin-bottom: 10px;">Bienvenido al Sistema de Control de Acceso de Visitas</h1>
-            <p style="color: #666; font-size: 16px;">Se ha creado una cuenta para ti en el Sistema de Vigilancia de UMx</p>
+            <p style="color: #666; font-size: 16px;">Se ha creado una cuenta para ti en el Sistema de Control de Acceso de Visitas de UMx</p>
           </div>
           
           <div style="background-color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #004987;">
@@ -621,14 +621,13 @@ async function enviarCredencialesUsuario(email, nombre, username, password) {
           <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h4 style="color: #856404; margin-top: 0;">🔐 Instrucciones de Acceso:</h4>
             <ol style="color: #856404; margin-bottom: 0;">
-              <li>Ingresa a la plataforma a través del siguiente enlace: <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}" style="color: #004987;">Sistema de Vigilancia</a></li>
+              <li>Ingresa a la plataforma a través del siguiente enlace: <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}" style="color: #004987;">Sistema de Control de Acceso de Visitas</a></li>
               <li>Utiliza las credenciales proporcionadas para iniciar sesión</li>
-              <li>Por seguridad, te recomendamos cambiar tu contraseña después del primer inicio de sesión</li>
             </ol>
           </div>
           
           <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-            <p style="color: #999; font-size: 12px; margin: 0;">Sistema de Vigilancia - Universidad Mondragón México</p>
+            <p style="color: #999; font-size: 12px; margin: 0;">Sistema de Control de Acceso de Visitas - Universidad Mondragón México</p>
           </div>
         </div>
       `
