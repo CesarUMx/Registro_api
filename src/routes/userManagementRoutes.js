@@ -8,7 +8,8 @@ const {
   updateUser, 
   deleteUser,
   getAdminUsers,
-  updateGuardType
+  updateGuardType,
+  bulkCreateUsers
 } = require('../controllers/userManagementController');
 const { verifyJWT, requireRole, requireGuardType } = require('../middlewares/auth');
 
@@ -53,5 +54,8 @@ router.put('/update-guard-type', verifyJWT, requireRole('guardia'), updateGuardT
 router.post('/', verifyJWT, allowSupervisorAccess, createUser);
 router.put('/:id', verifyJWT, requireRole('sysadmin'), updateUser);
 router.delete('/:id', verifyJWT, requireRole('sysadmin'), deleteUser);
+
+// Ruta para carga masiva de usuarios (solo sysadmin)
+router.post('/bulk-upload', verifyJWT, requireRole('sysadmin'), bulkCreateUsers);
 
 module.exports = router;
