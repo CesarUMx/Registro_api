@@ -577,11 +577,82 @@ async function enviarAlertaPreregistroProximoExpirar(email, nombreAdmin, codigoP
   }
 }
 
+/**
+ * Envía un correo electrónico con las credenciales de acceso a un nuevo usuario
+ * @param {string} email - Correo electrónico del usuario
+ * @param {string} nombre - Nombre del usuario
+ * @param {string} username - Nombre de usuario para acceder al sistema
+ * @param {string} password - Contraseña generada para el usuario
+ * @returns {Promise} - Promesa que se resuelve cuando se envía el correo
+ */
+async function enviarCredencialesUsuario(email, nombre, username, password) {
+  try {
+    console.log('📧 Iniciando envío de credenciales a nuevo usuario...');
+    console.log('Destinatario:', email);
+    
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'sistemas@mondragonmexico.edu.mx',
+      to: email,
+      subject: 'Credenciales de Acceso - Sistema de Control de Acceso de Visitas',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background-color: #fafafa;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #004987; margin-bottom: 10px;">Bienvenido al Sistema de Control de Acceso de Visitas</h1>
+            <p style="color: #666; font-size: 16px;">Se ha creado una cuenta para ti en el Sistema de Vigilancia de UMx</p>
+          </div>
+          
+          <div style="background-color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #004987;">
+            <h3 style="color: #004987; margin-top: 0;">👤 Tus Credenciales de Acceso</h3>
+            <p>Hola <strong>${nombre}</strong>,</p>
+            <p>Te damos la bienvenida al Sistema de Control de Acceso de Visitas de la Universidad Mondragón México. A continuación, encontrarás tus credenciales de acceso:</p>
+            
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <tr style="background-color: #f0f8ff;">
+                <td style="padding: 12px; font-weight: bold; color: #333; border: 1px solid #ddd;">Usuario:</td>
+                <td style="padding: 12px; color: #666; border: 1px solid #ddd;"><strong>${username}</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 12px; font-weight: bold; color: #333; border: 1px solid #ddd;">Contraseña:</td>
+                <td style="padding: 12px; color: #666; border: 1px solid #ddd;"><strong>${password}</strong></td>
+              </tr>
+            </table>
+          </div>
+          
+          <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h4 style="color: #856404; margin-top: 0;">🔐 Instrucciones de Acceso:</h4>
+            <ol style="color: #856404; margin-bottom: 0;">
+              <li>Ingresa a la plataforma a través del siguiente enlace: <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}" style="color: #004987;">Sistema de Vigilancia</a></li>
+              <li>Utiliza las credenciales proporcionadas para iniciar sesión</li>
+              <li>Por seguridad, te recomendamos cambiar tu contraseña después del primer inicio de sesión</li>
+            </ol>
+          </div>
+          
+          <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <p style="color: #999; font-size: 12px; margin: 0;">Sistema de Vigilancia - Universidad Mondragón México</p>
+          </div>
+        </div>
+      `
+    };
+
+    console.log('📤 Enviando correo con transporter...');
+    
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Correo de credenciales enviado exitosamente!');
+    console.log('Message ID:', info.messageId);
+    return info;
+    
+  } catch (error) {
+    console.error('❌ Error al enviar correo de credenciales:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   enviarAlertaVisita,
   enviarNotificacionSalida,
   enviarAlertaVisitantesDemorados,
   enviarPreregistroQR,
   enviarLinkUnicoPreregistro,
-  enviarAlertaPreregistroProximoExpirar
+  enviarAlertaPreregistroProximoExpirar,
+  enviarCredencialesUsuario
 };
