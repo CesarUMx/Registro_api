@@ -11,12 +11,15 @@ const {
   // POST /api/visitantes crear visitante
   async function postVisitante(req, res) {
     try {
-      const { nombre, tipo, telefono, empresa } = req.body;
+      const { nombre, tipo, telefono, empresa, foto_persona_nombre } = req.body;
       const nombreNormalizado = normalizeName(nombre);
       
       // Obtener el nombre del archivo de la foto de persona, ya sea desde el campo foto_persona_nombre
       // o desde el archivo subido
       const foto_ine = req.files?.foto_ine?.[0]?.filename;
+      
+      // Procesar foto_persona: priorizar archivo subido, luego nombre de archivo capturado
+      const foto_persona = req.files?.foto_persona?.[0]?.filename || foto_persona_nombre || null;
 
       checkRequiredFields(['nombre', 'tipo'], req.body);
 
@@ -34,6 +37,7 @@ const {
         tipo,
         telefono,
         empresa,
+        foto_persona,
         foto_ine
       });
   
@@ -76,7 +80,14 @@ const {
   async function putVisitante(req, res) {
     try {
       const fields = req.body;
-      if (req.files?.foto_persona?.[0]) fields.foto_persona = req.files.foto_persona[0].filename;
+      // Procesar foto_persona: priorizar archivo subido, luego nombre de archivo capturado
+      if (req.files?.foto_persona?.[0]) {
+        fields.foto_persona = req.files.foto_persona[0].filename;
+      } else if (fields.foto_persona_nombre) {
+        fields.foto_persona = fields.foto_persona_nombre;
+        delete fields.foto_persona_nombre; // Eliminar el campo temporal
+      }
+      
       if (req.files?.foto_ine?.[0]) fields.foto_ine = req.files.foto_ine[0].filename;
       fields.nombre = normalizeName(fields.nombre);
   
