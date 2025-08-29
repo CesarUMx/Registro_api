@@ -44,7 +44,11 @@ app.use(express.json());
 // que se usa en las rutas específicas para la carga de archivos
 
 // Servir archivos estáticos desde la carpeta uploads
-app.use('/uploads', express.static('uploads'));
+const path = require('path');
+// Servir los archivos estáticos desde la ruta /uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// También servir los archivos en la raíz para compatibilidad con Nginx
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Ruta raíz
 app.get('/api', (req, res) => {
