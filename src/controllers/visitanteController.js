@@ -11,12 +11,12 @@ const {
   // POST /api/visitantes crear visitante
   async function postVisitante(req, res) {
     try {
-      const { nombre, tipo, telefono, empresa, foto_persona_nombre } = req.body;
+      const { nombre, tipo, telefono, empresa, foto_persona_nombre, foto_ine_nombre } = req.body;
       const nombreNormalizado = normalizeName(nombre);
       
-      // Obtener el nombre del archivo de la foto de persona, ya sea desde el campo foto_persona_nombre
+      // Obtener el nombre del archivo de la foto de INE, ya sea desde el campo foto_ine_nombre
       // o desde el archivo subido
-      const foto_ine = req.files?.foto_ine?.[0]?.filename;
+      const foto_ine = req.files?.foto_ine?.[0]?.filename || foto_ine_nombre || null;
       
       // Procesar foto_persona: priorizar archivo subido, luego nombre de archivo capturado
       const foto_persona = req.files?.foto_persona?.[0]?.filename || foto_persona_nombre || null;
