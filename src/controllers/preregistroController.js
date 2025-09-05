@@ -40,6 +40,7 @@ async function postCrearPreregistro(req, res) {
     if (entryDate >= exitDate) {
       const error = new Error('La fecha de entrada debe ser anterior a la fecha de salida');
       error.status = 400;
+      error.message = 'La fecha de entrada debe ser anterior a la fecha de salida';
       throw error;
     }
 
@@ -51,6 +52,7 @@ async function postCrearPreregistro(req, res) {
     if (entryDate < nowWithMargin) {
       const error = new Error('La fecha de entrada debe ser futura');
       error.status = 400;
+      error.message = 'La fecha de entrada debe ser futura';
       throw error;
     }
 
@@ -84,6 +86,7 @@ async function postCrearPreregistro(req, res) {
       return res.status(400).json({
         ok: false,
         error: 'Datos inválidos: algunos visitantes o vehículos seleccionados no existen',
+        message: error.message,
         code: error.code
       });
     }
@@ -92,6 +95,7 @@ async function postCrearPreregistro(req, res) {
       return res.status(409).json({
         ok: false,
         error: 'Ya existe un preregistro similar con estos datos',
+        message: error.message,
         code: error.code
       });
     }
@@ -100,6 +104,7 @@ async function postCrearPreregistro(req, res) {
       return res.status(500).json({
         ok: false,
         error: 'Error interno del servidor al crear el preregistro',
+        message: error.message,
         code: error.code
       });
     }

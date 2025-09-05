@@ -8,10 +8,10 @@ const fs = require('fs');
 const cameraMap = {
     placauni: 'rtsp://cav:Str34m.C4v@10.1.231.109:554',
     personauni: 'rtsp://cav:Str34m.C4v@10.1.231.108:554',
-    ineuni: 'rtsp://cav:Str34m.C4v@10.1.231.133:554/Streaming/channels/101',
+    ineuniedi: 'rtsp://cav:Str34m.C4v@10.1.231.133:554/Streaming/channels/101',
+    ineunicaseta: 'rtsp://cav:Str34m.C4v@10.1.231.134:554/Streaming/channels/101',
     placaprepa: 'rtsp://cav:Str34m.C4v@10.1.231.107:554',
     personaprepa: 'rtsp://cav:Str34m.C4v@10.1.231.106:554',
-    ineprepa: 'rtsp://cav:Str34m.C4v@10.1.231.106:554'
 };
 
 async function capturarImagen(req, res) {

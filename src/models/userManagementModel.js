@@ -173,7 +173,7 @@ async function getAdminUsers() {
       SELECT u.id, u.name, u.email, r.name AS role
       FROM users u
       JOIN roles r ON r.id = u.role_id
-      WHERE r.name IN ('admin', 'sysadmin')
+      WHERE r.name IN ('admin', 'sysadmin', 'empleado')
       ORDER BY u.name ASC
     `);
     return result.rows;

@@ -1,6 +1,21 @@
 const pool = require('../config/db');
 
 async function createVehiculo({ foto_placa, placa }) {
+  // Verificar primero si ya existe un vehículo con esta placa
+  const checkResult = await pool.query(
+    `SELECT id FROM vehiculos WHERE placa = $1 LIMIT 1`,
+    [placa]
+  );
+  
+  if (checkResult.rows.length > 0) {
+    // Si ya existe un vehículo con esta placa, lanzar un error personalizado
+    const error = new Error(`La placa ${placa} ya está registrada en el sistema`);
+    error.status = 409; // Conflict status code
+    error.code = 'PLACA_DUPLICADA';
+    throw error;
+  }
+  
+  // Si no existe, proceder con la inserción
   const result = await pool.query(
     `INSERT INTO vehiculos (foto_placa, placa)
      VALUES ($1, $2) RETURNING *`,
