@@ -114,7 +114,7 @@ async function validatePersonaAVistar(idUsuario) {
   }
 
   const usuario = rows[0];
-  if (![2, 3].includes(usuario.role_id)) {
+  if (![2, 3, 4].includes(usuario.role_id)) {
     const error = new Error('La persona a visitar no tiene un rol válido para visitas');
     error.status = 400;
     error.code = 'ROL_INVALIDO_VISITA';
