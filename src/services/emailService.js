@@ -57,7 +57,7 @@ async function enviarAlertaVisita(email, nombreDestinatario, visitantes, edifici
             ${visitantesHtml}
           </div>
           
-          <p>Si no espera esta visita o tiene alguna pregunta, por favor contacte al departamento de seguridad.</p>
+          <p>Si no espera esta visita o tiene alguna pregunta, por favor contacte al departamento de seguridad a la extecion: 1892.</p>
           
           <p style="font-size: 12px; color: #777; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;">
             Este es un mensaje automático del Sistema de Vigilancia. Por favor no responda a este correo.
