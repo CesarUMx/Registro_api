@@ -91,13 +91,16 @@ app.listen(PORT, async () => {
   
   // Iniciar los programadores de tareas
   // Como son funciones asíncronas, usamos await para esperar a que terminen
-  console.log('Iniciando programadores de tareas...');
+  //console.log('Iniciando programadores de tareas...');
   try {
-    await iniciarProgramadorAlertasDemora();
-    console.log('Programador de alertas de demora iniciado correctamente');
+    //await iniciarProgramadorAlertasDemora();
+    //console.log('Programador de alertas de demora iniciado correctamente');
+    console.log('alertas demora desactivadas');
+
     
     await iniciarProgramadorFinalizarPreregistros();
     console.log('Programador para finalizar preregistros iniciado correctamente');
+
   } catch (error) {
     console.error('Error al iniciar los programadores de tareas:', error);
   }
