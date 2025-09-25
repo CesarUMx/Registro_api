@@ -1005,7 +1005,8 @@ async function obtenerVisitantesDemoradosSinSalirCaseta(minutos = 10) {
         id_visitante: row.registro_id_visitante,
         nombre: row.nombre_visitante,
         minutos_desde_salida: Math.floor(row.minutos_desde_salida),
-        contador_alertas: row.contador_alertas || 0
+        contador_alertas: row.contador_alertas || 0,
+        destino: row.destino || 'edificio' // Por defecto 'edificio' si no hay destino especificado
       });
     }
 

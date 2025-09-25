@@ -29,11 +29,24 @@ async function verificarYNotificarVisitantesDemorados() {
     if (registrosParaAlertar.length === 0) {
       return { ok: true, message: 'No hay visitantes demorados que requieran alerta en este momento' };
     }
+    
+    // Filtrar para ignorar los registros con destino 'alumno'
+    const registrosFiltrados = registrosParaAlertar.filter(registro => {
+      // Si algún visitante tiene destino diferente a 'alumno', incluir el registro
+      return registro.visitantes.some(v => v.destino !== 'alumno');
+    });
+    
+    // Si después de filtrar no hay registros para alertar, terminar
+    if (registrosFiltrados.length === 0) {
+      return { ok: true, message: 'No hay visitantes demorados que requieran alerta después de filtrar alumnos' };
+    }
 
     const visitantes = [];
 
-    for (const registro of registrosParaAlertar) {
-      visitantes.push(...registro.visitantes.map(v => v.id_visitante));
+    for (const registro of registrosFiltrados) {
+      // Solo incluir visitantes que no sean alumnos
+      const visitantesNoAlumnos = registro.visitantes.filter(v => v.destino !== 'alumno');
+      visitantes.push(...visitantesNoAlumnos.map(v => v.id_visitante));
     }
 
     if (visitantes.length > 0) {
@@ -41,10 +54,13 @@ async function verificarYNotificarVisitantesDemorados() {
     } 
     
     // 3. Preparar datos para el correo (solo para los que deben recibir alertas)
-    const visitantesAgrupados = registrosParaAlertar
-      .filter(registro => registro.visitantes.some(v => v.contador_alertas === 0 || v.contador_alertas % 3 === 0))
+    const visitantesAgrupados = registrosFiltrados
+      .filter(registro => registro.visitantes.some(v => 
+        v.destino !== 'alumno' && (v.contador_alertas === 0 || v.contador_alertas % 3 === 0)
+      ))
       .map(registro => {
       const visitantesInfo = registro.visitantes
+        .filter(v => v.destino !== 'alumno') // Filtrar alumnos
         .map(v => ({
           nombre: v.nombre,
           minutos: v.minutos_desde_salida
