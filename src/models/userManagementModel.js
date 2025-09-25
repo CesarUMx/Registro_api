@@ -167,15 +167,26 @@ async function deleteUser(id) {
 }
 
 // Obtener usuarios con rol admin y sysadmin
-async function getAdminUsers() {
+async function getAdminUsers(search = '') {
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT u.id, u.name, u.email, r.name AS role
       FROM users u
       JOIN roles r ON r.id = u.role_id
       WHERE r.name IN ('admin', 'sysadmin', 'empleado')
-      ORDER BY u.name ASC
-    `);
+    `;
+    
+    // Si hay un término de búsqueda, agregarlo a la consulta
+    const params = [];
+    if (search && search.trim() !== '') {
+      params.push(`%${search}%`);
+      query += ` AND (u.name ILIKE $1 OR u.email ILIKE $1)`;
+    }
+    
+    // Ordenar por nombre
+    query += ` ORDER BY u.name ASC`;
+    
+    const result = await pool.query(query, params);
     return result.rows;
   } catch (err) {
     console.error('Error en modelo al obtener usuarios admin/sysadmin:', err);
