@@ -69,7 +69,7 @@ async function getVisitantesByRegistroId(req, res) {
     }
 
     const visitantes = await obtenerVisitantesRegistro(registroId);
-    
+
     return res.status(200).json({
       ok: true,
       visitantes
@@ -119,15 +119,19 @@ async function patchEntradaEdificio(req, res) {
             nombresVisitantes.push('Visitante no especificado');
           }
 
-          // Enviar correo electrónico de alerta con todos los visitantes
-          await enviarAlertaVisita(
-            personaAVisitar.email,
-            personaAVisitar.name,
-            nombresVisitantes,
-            edificio,
-            motivo,
-            resultado.code_registro || `Registro #${registroId}`
-          );
+          if (personaAVisitar.role !== 'otros') {
+            // Enviar correo electrónico de alerta con todos los visitantes
+            await enviarAlertaVisita(
+              personaAVisitar.email,
+              personaAVisitar.name,
+              nombresVisitantes,
+              edificio,
+              motivo,
+              resultado.code_registro || `Registro #${registroId}`
+            );
+          } else {
+            console.log('No se envio correo a la persona a visitar');
+          }
         }
       } catch (emailError) {
         // No interrumpimos el flujo principal si hay un error en el envío del correo
@@ -165,7 +169,7 @@ async function postEntradaPeatonal(req, res) {
         throw error;
       }
     }
-    
+
     // Validar el destino
     if (!destino || (destino !== 'edificio' && destino !== 'cafeteria' && destino !== 'alumno')) {
       const error = new Error('El destino debe ser "edificio", "cafeteria" o "alumno"');
@@ -226,7 +230,7 @@ async function patchSalidaEdificio(req, res) {
 
     // Obtener los detalles del registro antes de procesar la salida
     const detalleRegistro = await obtenerDetalleRegistro(registroId);
-    
+
     const resultado = await salidaEdificio(
       registroId,
       visitantes,
@@ -240,33 +244,33 @@ async function patchSalidaEdificio(req, res) {
       try {
         // Obtener información de la persona visitada
         const personaVisitada = await getUserById(detalleRegistro.id_persona_a_visitar);
-        
+
         if (personaVisitada && personaVisitada.email) {
           // Preparar la lista de nombres de visitantes que salieron
           const nombresVisitantes = [];
-          
+
           if (visitantes && visitantes.length > 0) {
             // Recorrer todos los visitantes y obtener sus nombres
             for (const visitante of visitantes) {
               nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
             }
           }
-          
+
           // Si no se encontraron nombres, añadir un mensaje genérico
           if (nombresVisitantes.length === 0) {
             nombresVisitantes.push('Visitante no especificado');
           }
-          
+
           // Enviar correo electrónico de notificación de salida
-          await enviarNotificacionSalida(
-            personaVisitada.email,
-            personaVisitada.name,
-            nombresVisitantes,
-            detalleRegistro.edificio || 'No especificado',
-            detalleRegistro.code_registro || `Registro #${registroId}`,
-            notas,
-            'l edificio'
-          );
+          // await enviarNotificacionSalida(
+          //   personaVisitada.email,
+          //   personaVisitada.name,
+          //   nombresVisitantes,
+          //   detalleRegistro.edificio || 'No especificado',
+          //   detalleRegistro.code_registro || `Registro #${registroId}`,
+          //   notas,
+          //   'l edificio'
+          // );
         }
       } catch (emailError) {
         // No interrumpimos el flujo principal si hay un error en el envío del correo
@@ -301,51 +305,51 @@ async function patchSalidaCaseta(req, res) {
       error.status = 400;
       throw error;
     }
-    
+
     // Obtener los detalles del registro antes de procesar la salida
     const detalleRegistro = await obtenerDetalleRegistro(registroId);
-    
+
     const resultado = await salidaCaseta(registroId, req.user.userId, notas, salieron);
-    
+
     // Enviar notificación de salida por correo si hay una persona a visitar
     if (detalleRegistro && detalleRegistro.id_persona_a_visitar) {
       try {
         // Obtener información de la persona visitada
         const personaVisitada = await getUserById(detalleRegistro.id_persona_a_visitar);
-        
+
         if (personaVisitada && personaVisitada.email) {
           // Obtener los visitantes del registro
           const visitantesInfo = await obtenerVisitantesRegistro(registroId);
-          
+
           // Filtrar solo los visitantes que han salido completamente
-          const visitantesSalieron = visitantesInfo.filter(v => 
+          const visitantesSalieron = visitantesInfo.filter(v =>
             v.hora_salida_caseta !== null && v.estatus === 'completo'
           );
-          
+
           // Preparar la lista de nombres de visitantes que salieron
           const nombresVisitantes = [];
-          
+
           if (visitantesSalieron && visitantesSalieron.length > 0) {
             // Recorrer todos los visitantes y obtener sus nombres
             for (const visitante of visitantesSalieron) {
               nombresVisitantes.push(await nombreVisitante(visitante.id_visitante));
             }
           }
-          
+
           // Si no se encontraron nombres, añadir un mensaje genérico
           if (nombresVisitantes.length === 0) {
             nombresVisitantes.push('Visitante no especificado');
           }
-          
+
           // Enviar correo electrónico de notificación de salida
-          await enviarNotificacionSalida(
-            personaVisitada.email,
-            personaVisitada.name,
-            nombresVisitantes,
-            detalleRegistro.edificio || 'No especificado',
-            detalleRegistro.code_registro || `Registro #${registroId}`,
-            notas
-          );
+          // await enviarNotificacionSalida(
+          //   personaVisitada.email,
+          //   personaVisitada.name,
+          //   nombresVisitantes,
+          //   detalleRegistro.edificio || 'No especificado',
+          //   detalleRegistro.code_registro || `Registro #${registroId}`,
+          //   notas
+          // );
         }
       } catch (emailError) {
         // No interrumpimos el flujo principal si hay un error en el envío del correo
@@ -429,17 +433,17 @@ async function patchAsociarVehiculo(req, res) {
 
     let resultado;
     const codigo = code_registro.toUpperCase();
-    
+
     // Determinar el tipo de código
     if (codigo.startsWith('UMX')) {
       // Es un código de registro normal
       resultado = await asociarVehiculoARegistro(codigo, id_vehiculo, req.user.userId, id_visitante, tag_type, n_tarjeta);
     } else if (/^\d+$/.test(codigo)) {
       // Es un código numérico, podría ser código de empleado o matrícula de alumno
-      
+
       // Primero verificamos si es un código de empleado
       const resultadoEmpleado = await validarCodigoEmpleado(codigo);
-      
+
       if (resultadoEmpleado.valido) {
         // Es un código de empleado válido
         resultado = await crearRegistroDesdeCodigoPersona({
@@ -454,7 +458,7 @@ async function patchAsociarVehiculo(req, res) {
       } else {
         // Verificamos si es una matrícula de alumno
         const resultadoAlumno = await validarMatriculaAlumno(codigo);
-        
+
         if (resultadoAlumno.valido) {
           // Es una matrícula de alumno válida
           resultado = await crearRegistroDesdeCodigoPersona({
@@ -482,10 +486,10 @@ async function patchAsociarVehiculo(req, res) {
       });
     }
 
-    res.status(200).json({ 
-      ok: true, 
+    res.status(200).json({
+      ok: true,
       message: 'Vehículo asociado exitosamente',
-      ...resultado 
+      ...resultado
     });
 
   } catch (error) {
@@ -498,7 +502,7 @@ async function patchSalidaCasetaParcial(req, res) {
   try {
     // Validar que sea un guardia de caseta
     validateGuardType(req.user, ['caseta']);
-    
+
     const registroId = req.params.id;
     const { visitantes, vehiculo_id, notas } = req.body;
 
@@ -520,33 +524,33 @@ async function patchSalidaCasetaParcial(req, res) {
         // Obtener información de la persona visitada
         const personaVisitada = await getUserById(detalleRegistro.id_persona_a_visitar);
         console.log(personaVisitada);
-        
+
         if (personaVisitada && personaVisitada.email) {
           console.log(personaVisitada.email);
           // Preparar la lista de nombres de visitantes que salieron
           const nombresVisitantes = [];
-          
+
           // Obtener los nombres de los visitantes que salieron parcialmente
           for (const visitanteId of visitantes) {
             nombresVisitantes.push(await nombreVisitante(visitanteId.id_visitante));
           }
-          
+
           // Si no se encontraron nombres, añadir un mensaje genérico
           if (nombresVisitantes.length === 0) {
             nombresVisitantes.push('Visitante no especificado');
           }
           console.log(nombresVisitantes);
-          
+
           // Enviar correo electrónico de notificación de salida
-          await enviarNotificacionSalida(
-            personaVisitada.email,
-            personaVisitada.name,
-            nombresVisitantes,
-            detalleRegistro.edificio || 'No especificado',
-            detalleRegistro.code_registro || `Registro #${registroId}`,
-            notas || 'Salida de caseta',
-            ' la caseta'
-          );
+          // await enviarNotificacionSalida(
+          //   personaVisitada.email,
+          //   personaVisitada.name,
+          //   nombresVisitantes,
+          //   detalleRegistro.edificio || 'No especificado',
+          //   detalleRegistro.code_registro || `Registro #${registroId}`,
+          //   notas || 'Salida de caseta',
+          //   ' la caseta'
+          // );
         }
       } catch (emailError) {
         // No interrumpimos el flujo principal si hay un error en el envío del correo

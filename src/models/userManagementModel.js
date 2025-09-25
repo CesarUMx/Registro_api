@@ -173,7 +173,7 @@ async function getAdminUsers(search = '') {
       SELECT u.id, u.name, u.email, r.name AS role
       FROM users u
       JOIN roles r ON r.id = u.role_id
-      WHERE r.name IN ('admin', 'sysadmin', 'empleado')
+      WHERE r.name IN ('admin', 'sysadmin', 'empleado', 'otros')
     `;
     
     // Si hay un término de búsqueda, agregarlo a la consulta

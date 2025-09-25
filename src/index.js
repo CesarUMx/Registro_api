@@ -18,6 +18,7 @@ const bitacoraRouter = require('./routes/bitacoraRoutes');
 // Importar los programadores de tareas
 const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 const { iniciarProgramadorFinalizarPreregistros } = require('./schedulers/finalizarPreregistrosScheduler');
+const { iniciarProgramadorCerrarRegistrosAlumnos } = require('./schedulers/cerrarRegistrosAlumnosScheduler');
 
 // Configuración CORS
 app.use(cors({
@@ -100,6 +101,10 @@ app.listen(PORT, async () => {
     
     await iniciarProgramadorFinalizarPreregistros();
     console.log('Programador para finalizar preregistros iniciado correctamente');
+    
+    // Iniciar programador para cerrar registros de alumnos a las 10 PM
+    await iniciarProgramadorCerrarRegistrosAlumnos();
+    console.log('Programador para cerrar registros de alumnos iniciado correctamente');
 
   } catch (error) {
     console.error('Error al iniciar los programadores de tareas:', error);
