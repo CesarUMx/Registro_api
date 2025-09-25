@@ -23,13 +23,12 @@ async function iniciarProgramadorAlertasDemora() {
   cron.schedule(`*/${INTERVALO_VERIFICACION} * * * *`, async () => {
     try {
       // Verificar visitantes demorados
-      // const resultadoVisitantes = await verificarYNotificarVisitantesDemorados();
-      // console.log(`Resultado de la verificación de visitantes demorados: ${resultadoVisitantes.message}`);
+      const resultadoVisitantes = await verificarYNotificarVisitantesDemorados();
+      console.log(`Resultado de la verificación de visitantes demorados: ${resultadoVisitantes.message}`);
       
-      // // Verificar preregistros próximos a expirar
-      // const resultadoPreregistros = await verificarYNotificarPreregistrosProximosExpirar();
-      // console.log(`Resultado de la verificación de preregistros próximos a expirar: ${resultadoPreregistros.message}`);
-      console.log('alertas demora desactivadas');
+      // Verificar preregistros próximos a expirar
+      const resultadoPreregistros = await verificarYNotificarPreregistrosProximosExpirar();
+      console.log(`Resultado de la verificación de preregistros próximos a expirar: ${resultadoPreregistros.message}`);
     } catch (error) {
       console.error('Error en la verificación programada:', error);
     }

@@ -236,7 +236,12 @@ async function deleteUser(req, res, next) {
 // Obtener usuarios con rol admin y sysadmin
 async function getAdminUsers(req, res, next) {
   try {
-    const users = await userModel.getAdminUsers();
+    // Obtener el parámetro de búsqueda de la consulta
+    const search = req.query.search || '';
+    
+    // Obtener los usuarios filtrados por la búsqueda
+    const users = await userModel.getAdminUsers(search);
+    
     res.json({ ok: true, data: users });
   } catch (err) {
     console.error('Error al obtener usuarios admin/sysadmin:', err);
