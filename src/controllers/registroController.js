@@ -167,8 +167,8 @@ async function postEntradaPeatonal(req, res) {
     }
     
     // Validar el destino
-    if (!destino || (destino !== 'edificio' && destino !== 'cafeteria')) {
-      const error = new Error('El destino debe ser "edificio" o "cafeteria"');
+    if (!destino || (destino !== 'edificio' && destino !== 'cafeteria' && destino !== 'alumno')) {
+      const error = new Error('El destino debe ser "edificio", "cafeteria" o "alumno"');
       error.status = 400;
       throw error;
     }

@@ -229,7 +229,8 @@ async function crearRegistroPeatonal({ visitantes, idGuardiaCaseta, destino = 'e
       codigos.push({ id_visitante: v.id_visitante, codigo });
 
       // Determinar el estatus según el destino
-      const estatus = destino === 'edificio' ? 'en caseta' : 'cafeteria';
+      // Si es edificio -> 'en caseta', si es cafeteria o alumno -> el nombre del destino
+      const estatus = destino === 'edificio' ? 'en caseta' : destino;
 
       await client.query(
         `INSERT INTO registro_visitantes (
