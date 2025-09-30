@@ -10,6 +10,7 @@ async function getAllUsers() {
       SELECT u.id, u.username, u.name, u.email, u.created_at, r.name AS role, u.guard_type
       FROM users u
       JOIN roles r ON r.id = u.role_id
+      WHERE u.activo = true
       ORDER BY u.created_at DESC
     `);
     return result.rows;
