@@ -592,8 +592,10 @@ async function getRegistroPublico(req, res) {
 
 async function patchCargarVisitantes(req, res) {
   try {
-    // Validar que sea guardia de tipo 'caseta'
-    validateGuardType(req.user, ['caseta']);
+    // Permitir temporalmente a guardias de entrada y caseta
+    validateGuardType(req.user, ['caseta', 'entrada', 'supervisor']);
+    // Nota: Esta es una modificación temporal para permitir que los guardias de entrada
+    // también puedan cargar visitantes
 
     const registroId = parseInt(req.params.id);
     const { visitantes } = req.body;
