@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { verifyJWT, requireRole } = require('../middlewares/auth');
+const { verifyJWT, requireRole, requireGuardType } = require('../middlewares/auth');
 const {
   postCrearPreregistro,
   getPreregistros,
@@ -50,8 +50,15 @@ const upload = multer({
 // Middleware de autenticación para todas las rutas
 router.use(verifyJWT);
 
-// POST /api/preregistros - Crear nuevo preregistro (solo admin y sysadmin)
-router.post('/', requireRole('admin', 'sysadmin'), postCrearPreregistro);
+// POST /api/preregistros - Crear nuevo preregistro (admin, sysadmin y guardias de entrada)
+router.post('/', (req, res, next) => {
+  // Si es admin o sysadmin, permitir acceso directo
+  if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+    return next();
+  }
+  // Si es guardia, verificar que sea de tipo entrada
+  requireGuardType('entrada', 'supervisor')(req, res, next);
+}, postCrearPreregistro);
 
 // POST /api/preregistros/list - Obtener lista de preregistros con paginación
 router.post('/list', requireRole('admin', 'sysadmin', 'guardia'), getPreregistros);
@@ -62,27 +69,65 @@ router.get('/codigo/:codigo', requireRole('admin', 'sysadmin', 'guardia'), getPr
 // GET /api/preregistros/:id - Obtener preregistro por ID
 router.get('/:id', requireRole('admin', 'sysadmin', 'guardia'), getPreregistroPorId);
 
-// POST /api/preregistros/generar-link - Generar link único para preregistro (solo admin y sysadmin)
-router.post('/generar-link', requireRole('admin', 'sysadmin'), postGenerarLinkUnico);
+// POST /api/preregistros/generar-link - Generar link único para preregistro (admin, sysadmin y guardias de entrada)
+router.post('/generar-link', (req, res, next) => {
+  // Si es admin o sysadmin, permitir acceso directo
+  if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+    return next();
+  }
+  // Si es guardia, verificar que sea de tipo entrada
+  requireGuardType('entrada', 'supervisor')(req, res, next);
+}, postGenerarLinkUnico);
 
-// POST /api/preregistros/enviar-correo - Enviar preregistro completo por correo (solo admin y sysadmin)
-router.post('/enviar-correo', requireRole('admin', 'sysadmin'), postEnviarPorCorreo);
+// POST /api/preregistros/enviar-correo - Enviar preregistro completo por correo (admin, sysadmin y guardias de entrada)
+router.post('/enviar-correo', (req, res, next) => {
+  // Si es admin o sysadmin, permitir acceso directo
+  if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+    return next();
+  }
+  // Si es guardia, verificar que sea de tipo entrada
+  requireGuardType('entrada', 'supervisor')(req, res, next);
+}, postEnviarPorCorreo);
 
 // PATCH /api/preregistros/:id/status - Actualizar estado de preregistro
 router.patch('/:id/status', requireRole('admin', 'sysadmin', 'guardia'), patchEstadoPreregistro);
 
 // GET /api/preregistros/:id/verificar-fotos - Verificar qué fotos faltan para iniciar preregistro
-router.get('/:id/verificar-fotos', requireRole('admin', 'sysadmin', 'guardia'), getVerificarFotosFaltantes);
+router.get('/:id/verificar-fotos', 
+  (req, res, next) => {
+    // Si es admin o sysadmin, permitir acceso directo
+    if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+      return next();
+    }
+    // Si es guardia, verificar que sea de tipo entrada, caseta o supervisor
+    requireGuardType('entrada', 'caseta', 'supervisor')(req, res, next);
+  },
+  getVerificarFotosFaltantes
+);
 
 // PATCH /api/preregistros/:id/iniciar - Iniciar preregistro con fotos del conductor y placa
 router.patch('/:id/iniciar', 
-  requireRole('admin', 'sysadmin', 'guardia'),
+  (req, res, next) => {
+    // Si es admin o sysadmin, permitir acceso directo
+    if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+      return next();
+    }
+    // Si es guardia, verificar que sea de tipo entrada, caseta o supervisor
+    requireGuardType('entrada', 'caseta', 'supervisor')(req, res, next);
+  },
   patchIniciarPreregistro
 );
 
 // POST /api/preregistros/cargar-foto-visitante - Cargar fotos de visitante (foto_persona y/o foto_ine)
 router.post('/cargar-foto-visitante',
-  requireRole('admin', 'sysadmin', 'guardia'),
+  (req, res, next) => {
+    // Si es admin o sysadmin, permitir acceso directo
+    if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+      return next();
+    }
+    // Si es guardia, verificar que sea de tipo entrada, caseta o supervisor
+    requireGuardType('entrada', 'caseta', 'supervisor')(req, res, next);
+  },
   upload.fields([
     { name: 'foto_persona', maxCount: 1 },
     { name: 'foto_ine', maxCount: 1 }
@@ -92,7 +137,14 @@ router.post('/cargar-foto-visitante',
 
 // POST /api/preregistros/cargar-foto-vehiculo - Cargar foto de placa de vehículo
 router.post('/cargar-foto-vehiculo',
-  requireRole('admin', 'sysadmin', 'guardia'),
+  (req, res, next) => {
+    // Si es admin o sysadmin, permitir acceso directo
+    if (req.user.role === 'admin' || req.user.role === 'sysadmin') {
+      return next();
+    }
+    // Si es guardia, verificar que sea de tipo entrada, caseta o supervisor
+    requireGuardType('entrada', 'caseta', 'supervisor')(req, res, next);
+  },
   upload.single('foto_placa'),
   postCargarFotoVehiculo
 );
