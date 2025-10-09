@@ -17,8 +17,9 @@ async function cerrarRegistrosAlumnos() {
         SELECT r.id, r.code_registro
         FROM registro r
         JOIN registro_visitantes rv ON r.id = rv.registro_id
-        WHERE rv.estatus = 'alumno'
+        WHERE rv.estatus = 'iniciado'
         AND rv.hora_salida_caseta IS NULL
+        AND r.tipo_r = 'no_registrado'
       `;
       
       const { rows: registrosAbiertos } = await client.query(selectQuery);
@@ -38,10 +39,8 @@ async function cerrarRegistrosAlumnos() {
       const updateVisitantesQuery = `
         UPDATE registro_visitantes
         SET hora_salida_caseta = NOW(),
-            estatus = 'completo',
-            notas = COALESCE(notas, '') || ' (Cerrado automáticamente a las 10 PM)'
+            estatus = 'completo'
         WHERE registro_id = ANY($1)
-        AND destino = 'alumno'
         AND hora_salida_caseta IS NULL
         RETURNING registro_id
       `;
@@ -51,10 +50,12 @@ async function cerrarRegistrosAlumnos() {
       // Actualizar la tabla registro
       const updateRegistroQuery = `
         UPDATE registro
-        SET gate_exit_time = NOW(),
-            exited_at = NOW()
+        SET hora_salida_caseta = NOW(),
+            n_salieron = 1,
+            estatus = 'completo',
+            notas = COALESCE(notas, '') || ' (Cerrado automáticamente a las 10 PM)'
         WHERE id = ANY($1)
-        AND gate_exit_time IS NULL
+        AND hora_salida_caseta IS NULL
         RETURNING id, code_registro
       `;
       
@@ -85,8 +86,8 @@ async function cerrarRegistrosAlumnos() {
 async function iniciarProgramadorCerrarRegistrosAlumnos() {
   // Programar la tarea para que se ejecute todos los días a las 10 PM
   // El formato de cron es: minuto hora día-mes mes día-semana
-  // 0 22 * * * significa "a las 10:00 PM todos los días"
-  cron.schedule('0 22 * * *', async () => {
+  // 0 19 * * * significa "a las 7:00 PM todos los días"
+  cron.schedule('0 20 * * *', async () => {
     try {
       const resultado = await cerrarRegistrosAlumnos();
       console.log(`Resultado del cierre automático de registros de alumnos: ${resultado.message}`);
