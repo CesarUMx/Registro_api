@@ -16,9 +16,8 @@ async function cerrarRegistrosAlumnos() {
       const selectQuery = `
         SELECT r.id, r.code_registro
         FROM registro r
-        JOIN registro_visitantes rv ON r.id = rv.registro_id
-        WHERE rv.estatus = 'iniciado'
-        AND rv.hora_salida_caseta IS NULL
+        WHERE r.estatus = 'iniciado'
+        AND r.hora_salida_caseta IS NULL
         AND r.tipo_r = 'no_registrado'
       `;
       
@@ -51,7 +50,7 @@ async function cerrarRegistrosAlumnos() {
       const updateRegistroQuery = `
         UPDATE registro
         SET hora_salida_caseta = NOW(),
-            n_salieron = 1,
+            n_salieron = n_visitantes,
             estatus = 'completo',
             notas = COALESCE(notas, '') || ' (Cerrado automáticamente a las 10 PM)'
         WHERE id = ANY($1)
@@ -87,7 +86,7 @@ async function iniciarProgramadorCerrarRegistrosAlumnos() {
   // Programar la tarea para que se ejecute todos los días a las 10 PM
   // El formato de cron es: minuto hora día-mes mes día-semana
   // 0 19 * * * significa "a las 7:00 PM todos los días"
-  cron.schedule('0 20 * * *', async () => {
+  cron.schedule('0 22 * * *', async () => {
     try {
       const resultado = await cerrarRegistrosAlumnos();
       console.log(`Resultado del cierre automático de registros de alumnos: ${resultado.message}`);
