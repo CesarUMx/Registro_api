@@ -5,7 +5,8 @@ const { postRegistroEntradaCaseta, patchEntradaEdificio, postEntradaPeatonal,
     patchSalidaEdificio, patchSalidaCaseta, 
     getRegistrosListado, getRegistroDetalle, patchAsociarVehiculo,
     getRegistroPublico, patchSalidaCasetaParcial, patchCargarVisitantes,
-    getVisitantesByRegistroId, getRegistroPorCodigo
+    getVisitantesByRegistroId, getRegistroPorCodigo, getRegistrosHoyCount,
+    getRegistrosActivosCount
 } = require('../controllers/registroController');
 
 // Ruta pública para obtener detalles de un registro por código (sin autenticación)
@@ -40,6 +41,12 @@ router.patch('/:id/cargar-visitantes', patchCargarVisitantes);
 
 // Listado de registros
 router.post('/', getRegistrosListado);
+
+// Obtener conteo de registros de hoy
+router.get('/hoy/count', getRegistrosHoyCount);
+
+// Obtener conteo de registros activos
+router.get('/activos/count', getRegistrosActivosCount);
 
 // Detalle de un registro
 router.get('/:id', getRegistroDetalle);

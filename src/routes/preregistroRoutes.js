@@ -18,7 +18,8 @@ const {
   patchIniciarPreregistro,
   getVerificarFotosFaltantes,
   postCargarFotoVisitante,
-  postCargarFotoVehiculo
+  postCargarFotoVehiculo,
+  getPreregistrosPendientesCount
 } = require('../controllers/preregistroController');
 const { getBitacoraPreregistro } = require('../controllers/bitacoraController');
 
@@ -62,6 +63,12 @@ router.post('/', (req, res, next) => {
 
 // POST /api/preregistros/list - Obtener lista de preregistros con paginación
 router.post('/list', requireRole('admin', 'sysadmin', 'guardia'), getPreregistros);
+
+// GET /api/preregistros/pendientes/count - Obtener conteo de preregistros pendientes
+router.get('/pendientes/count', 
+  requireRole('admin', 'sysadmin', 'guardia'),
+  getPreregistrosPendientesCount
+);
 
 // GET /api/preregistros/codigo/:codigo - Obtener preregistro por código
 router.get('/codigo/:codigo', requireRole('admin', 'sysadmin', 'guardia'), getPreregistroPorCodigo);
