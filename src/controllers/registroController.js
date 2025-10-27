@@ -629,6 +629,48 @@ async function patchCargarVisitantes(req, res) {
 
 
 
+// Obtener conteo de registros de hoy
+async function getRegistrosHoyCount(req, res) {
+  try {
+    const pool = require('../config/db');
+    const query = `
+      SELECT COUNT(*) as count 
+      FROM registro 
+      WHERE DATE(fecha_create) = CURRENT_DATE
+    `;
+    
+    const result = await pool.query(query);
+    
+    res.status(200).json({
+      ok: true,
+      count: parseInt(result.rows[0].count)
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+// Obtener conteo de registros activos (visitantes dentro de las instalaciones)
+async function getRegistrosActivosCount(req, res) {
+  try {
+    const pool = require('../config/db');
+    const query = `
+      SELECT COUNT(*) as count 
+      FROM registro 
+      WHERE estatus IN ('en_caseta', 'en_edificio')
+    `;
+    
+    const result = await pool.query(query);
+    
+    res.status(200).json({
+      ok: true,
+      count: parseInt(result.rows[0].count)
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
 module.exports = {
   postRegistroEntradaCaseta,
   patchEntradaEdificio,
@@ -642,5 +684,7 @@ module.exports = {
   getRegistroPublico,
   patchCargarVisitantes,
   getRegistroPorCodigo,
-  patchSalidaCaseta
+  patchSalidaCaseta,
+  getRegistrosHoyCount,
+  getRegistrosActivosCount
 };

@@ -1145,6 +1145,39 @@ async function getVehiculoPreregistro(req, res) {
   }
 }
 
+/**
+ * Obtener conteo de preregistros pendientes
+ */
+async function getPreregistrosPendientesCount(req, res) {
+  try {
+    const pool = require('../config/db');
+    const query = `
+      SELECT COUNT(*) as count 
+      FROM preregistros 
+      WHERE status IN ('pendiente', 'listo')
+    `;
+    
+    const result = await pool.query(query);
+    
+    res.status(200).json({
+      ok: true,
+      count: parseInt(result.rows[0].count)
+    });
+  } catch (error) {
+    console.error('Error en getPreregistrosPendientesCount:', {
+      message: error.message,
+      code: error.code,
+      userId: req.user?.userId
+    });
+    
+    return res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error al obtener el conteo de preregistros pendientes',
+      code: error.code || 'QUERY_ERROR'
+    });
+  }
+}
+
 module.exports = {
   postCrearPreregistro,
   getPreregistros,
@@ -1164,5 +1197,6 @@ module.exports = {
   buscarVisitantesPublico,
   crearVisitantePublico,
   buscarVehiculoPublico,
-  crearVehiculoPublico
+  crearVehiculoPublico,
+  getPreregistrosPendientesCount
 };

@@ -15,6 +15,7 @@ const capturaRouter = require('./routes/capturaRoutes');
 const preregistroRouter = require('./routes/preregistroRoutes');
 const preregistroPublicoRouter = require('./routes/preregistroPublicoRoutes');
 const bitacoraRouter = require('./routes/bitacoraRoutes');
+const dashboardRouter = require('./routes/dashboardRoutes');
 // Importar los programadores de tareas
 const { iniciarProgramadorAlertasDemora } = require('./schedulers/alertasDemoraScheduler');
 const { iniciarProgramadorFinalizarPreregistros } = require('./schedulers/finalizarPreregistrosScheduler');
@@ -24,7 +25,8 @@ const { iniciarProgramadorCerrarRegistrosAlumnos } = require('./schedulers/cerra
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
-      process.env.FRONTEND_URL
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL_PUBLICO
     ];
     // Permitir solicitudes sin origen (como aplicaciones móviles o curl)
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
@@ -78,6 +80,7 @@ app.use('/api/registro', registroRouter);
 app.use('/api/preregistros', preregistroRouter);
 app.use('/api/eventos', require('./routes/eventoRoutes'));
 app.use('/api/bitacora', bitacoraRouter);
+app.use('/api/dashboard', dashboardRouter);
 // Para cualquier ruta no definida:
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: 'Ruta no encontrada' });
