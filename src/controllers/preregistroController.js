@@ -145,12 +145,20 @@ async function getPreregistros(req, res) {
       admin_id = req.user.userId;
     }
 
+    // Filtrar cancelados según el rol
+    // ADMIN y GUARDIA no ven cancelados, solo SYSADMIN los ve
+    let excludeCanceled = false;
+    if (req.user.role === 'admin' || req.user.role === 'guardia') {
+      excludeCanceled = true;
+    }
+
     const resultado = await obtenerPreregistros({
       start: parseInt(start),
       length: parseInt(length),
       search: search?.value || search || '',
       status,
-      admin_id // Pasar el admin_id para filtrar
+      admin_id, // Pasar el admin_id para filtrar
+      excludeCanceled // Excluir cancelados para admin y guardia
     });
 
     res.json({
@@ -835,6 +843,14 @@ async function patchIniciarPreregistro(req, res) {
       });
     }
 
+    // Verificar que el preregistro no esté cancelado
+    if (preregistro.status === 'cancelado') {
+      return res.status(400).json({
+        ok: false,
+        message: 'No se puede iniciar un preregistro cancelado'
+      });
+    }
+
     // Verificar que la hora actual no sea menor a 15 minutos antes de la hora de entrada programada
     const now = new Date();
     const scheduledEntryTime = new Date(preregistro.scheduled_entry_time);
@@ -924,31 +940,50 @@ try {
  */
 async function postCargarFotoVisitante(req, res) {
   try {
-    const { visitante_id } = req.body;
+    console.log('👤 [BACKEND] Recibiendo solicitud de carga de fotos de visitante');
+    console.log('💶 req.body:', req.body);
+    console.log('📁 req.files:', req.files);
+    
+    const { visitante_id, foto_persona_nombre, foto_ine_nombre } = req.body;
     
     if (!visitante_id) {
+      console.log('❌ Error: visitante_id faltante');
       const error = new Error('ID de visitante es requerido');
-      error.status = 400;
-      throw error;
-    }
-
-    // Verificar que se hayan enviado archivos
-    if (!req.files || (!req.files.foto_persona && !req.files.foto_ine)) {
-      const error = new Error('Debe enviar al menos una foto (foto_persona o foto_ine)');
       error.status = 400;
       throw error;
     }
 
     const fotos = {};
     
-    if (req.files.foto_persona) {
+    // Verificar foto de persona (archivo o nombre capturado)
+    if (foto_persona_nombre) {
+      console.log('📷 Usando foto de persona capturada:', foto_persona_nombre);
+      fotos.foto_persona = foto_persona_nombre;
+    } else if (req.files && req.files.foto_persona) {
+      console.log('📁 Usando archivo de foto de persona subido:', req.files.foto_persona[0].filename);
       fotos.foto_persona = req.files.foto_persona[0].filename;
     }
     
-    if (req.files.foto_ine) {
+    // Verificar foto de INE (archivo o nombre capturado)
+    if (foto_ine_nombre) {
+      console.log('📷 Usando foto de INE capturada:', foto_ine_nombre);
+      fotos.foto_ine = foto_ine_nombre;
+    } else if (req.files && req.files.foto_ine) {
+      console.log('📁 Usando archivo de foto de INE subido:', req.files.foto_ine[0].filename);
       fotos.foto_ine = req.files.foto_ine[0].filename;
     }
 
+    // Verificar que se haya enviado al menos una foto
+    if (!fotos.foto_persona && !fotos.foto_ine) {
+      console.log('❌ Error: No se encontró ninguna foto');
+      console.log('req.body:', req.body);
+      console.log('req.files:', req.files);
+      const error = new Error('Debe enviar al menos una foto (foto_persona o foto_ine)');
+      error.status = 400;
+      throw error;
+    }
+
+    console.log('💾 Guardando fotos:', fotos);
     const visitanteActualizado = await cargarFotoVisitante(visitante_id, fotos);
 
     res.status(200).json({
@@ -1178,6 +1213,105 @@ async function getPreregistrosPendientesCount(req, res) {
   }
 }
 
+/**
+ * Cancelar un preregistro
+ * Solo ADMIN y SYSADMIN pueden cancelar
+ * Solo pueden cancelar sus propios preregistros
+ */
+async function patchCancelarPreregistro(req, res) {
+  try {
+    const pool = require('../config/db');
+    const { id } = req.params;
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+
+    // Validar que el ID sea un número válido
+    if (!id || isNaN(id)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'ID de preregistro inválido'
+      });
+    }
+
+    // Verificar que el usuario tenga permisos (admin o sysadmin)
+    if (userRole !== 'admin' && userRole !== 'sysadmin') {
+      return res.status(403).json({
+        ok: false,
+        error: 'No tienes permisos para cancelar preregistros'
+      });
+    }
+
+    // Obtener el preregistro para verificar el propietario y estado actual
+    const preregistroQuery = `
+      SELECT id, admin_id, status 
+      FROM preregistros 
+      WHERE id = $1
+    `;
+    const preregistroResult = await pool.query(preregistroQuery, [id]);
+
+    if (preregistroResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: 'Preregistro no encontrado'
+      });
+    }
+
+    const preregistro = preregistroResult.rows[0];
+
+    // Verificar que el usuario sea el propietario del preregistro
+    if (preregistro.admin_id !== userId) {
+      return res.status(403).json({
+        ok: false,
+        error: 'Solo puedes cancelar tus propios preregistros'
+      });
+    }
+
+    // Verificar que el preregistro no esté ya cancelado o completado
+    if (preregistro.status === 'cancelado') {
+      return res.status(400).json({
+        ok: false,
+        error: 'El preregistro ya está cancelado'
+      });
+    }
+
+    if (preregistro.status === 'completado') {
+      return res.status(400).json({
+        ok: false,
+        error: 'No se puede cancelar un preregistro completado'
+      });
+    }
+
+    // Actualizar el estado a cancelado
+    const updateQuery = `
+      UPDATE preregistros 
+      SET status = 'cancelado', updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $1
+      RETURNING *
+    `;
+    const updateResult = await pool.query(updateQuery, [id]);
+
+    res.status(200).json({
+      ok: true,
+      message: 'Preregistro cancelado exitosamente',
+      preregistro: updateResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error en patchCancelarPreregistro:', {
+      message: error.message,
+      code: error.code,
+      userId: req.user?.userId,
+      preregistroId: req.params.id
+    });
+    
+    return res.status(error.status || 500).json({
+      ok: false,
+      error: error.message || 'Error al cancelar el preregistro',
+      code: error.code || 'QUERY_ERROR'
+    });
+  }
+}
+
 module.exports = {
   postCrearPreregistro,
   getPreregistros,
@@ -1198,5 +1332,6 @@ module.exports = {
   crearVisitantePublico,
   buscarVehiculoPublico,
   crearVehiculoPublico,
-  getPreregistrosPendientesCount
+  getPreregistrosPendientesCount,
+  patchCancelarPreregistro
 };
