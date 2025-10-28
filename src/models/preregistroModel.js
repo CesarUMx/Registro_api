@@ -120,7 +120,8 @@ async function obtenerPreregistros({
   length = 10,
   search = '',
   status = '',
-  admin_id = null // Nuevo parámetro para filtrar por admin
+  admin_id = null, // Nuevo parámetro para filtrar por admin
+  excludeCanceled = false // Nuevo parámetro para excluir cancelados
 }) {
   try {
     let whereClause = 'WHERE 1=1';
@@ -132,6 +133,11 @@ async function obtenerPreregistros({
       whereClause += ` AND p.admin_id = $${paramIndex}`;
       params.push(admin_id);
       paramIndex++;
+    }
+    
+    // Excluir cancelados (para admin y guardia)
+    if (excludeCanceled) {
+      whereClause += ` AND p.status != 'cancelado'`;
     }
     
     // Filtro por búsqueda de código

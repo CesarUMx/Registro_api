@@ -19,7 +19,8 @@ const {
   getVerificarFotosFaltantes,
   postCargarFotoVisitante,
   postCargarFotoVehiculo,
-  getPreregistrosPendientesCount
+  getPreregistrosPendientesCount,
+  patchCancelarPreregistro
 } = require('../controllers/preregistroController');
 const { getBitacoraPreregistro } = require('../controllers/bitacoraController');
 
@@ -98,6 +99,9 @@ router.post('/enviar-correo', (req, res, next) => {
 
 // PATCH /api/preregistros/:id/status - Actualizar estado de preregistro
 router.patch('/:id/status', requireRole('admin', 'sysadmin', 'guardia'), patchEstadoPreregistro);
+
+// PATCH /api/preregistros/:id/cancelar - Cancelar preregistro (solo admin y sysadmin)
+router.patch('/:id/cancelar', requireRole('admin', 'sysadmin'), patchCancelarPreregistro);
 
 // GET /api/preregistros/:id/verificar-fotos - Verificar qué fotos faltan para iniciar preregistro
 router.get('/:id/verificar-fotos', 
