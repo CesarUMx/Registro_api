@@ -817,20 +817,21 @@ async function crearVehiculoPublico(req, res) {
 }
 
 /**
- * Iniciar preregistro con fotos del conductor y placa
+ * Iniciar preregistro parcial con visitantes y vehículos seleccionados
  */
 async function patchIniciarPreregistro(req, res) {
   try {
     const { id } = req.params;
-    const { visitantes } = req.body;
+    const { visitantes, vehiculos = [] } = req.body;
     
-    console.log('Datos recibidos para iniciar preregistro:', { id, visitantes });
+    console.log('Datos recibidos para iniciar preregistro:', { id, visitantes, vehiculos });
     
-    // Validar que se proporcionen visitantes
-    if (!visitantes || !Array.isArray(visitantes) || visitantes.length === 0) {
+    // Validar que se proporcionen visitantes o vehículos
+    if ((!visitantes || !Array.isArray(visitantes) || visitantes.length === 0) && 
+        (!vehiculos || !Array.isArray(vehiculos) || vehiculos.length === 0)) {
       return res.status(400).json({ 
         ok: false, 
-        message: 'Se requiere al menos un visitante' 
+        message: 'Se requiere al menos un visitante o un vehículo para iniciar el preregistro' 
       });
     }
 
@@ -843,11 +844,18 @@ async function patchIniciarPreregistro(req, res) {
       });
     }
 
-    // Verificar que el preregistro no esté cancelado
+    // Verificar que el preregistro no esté cancelado o completado
     if (preregistro.status === 'cancelado') {
       return res.status(400).json({
         ok: false,
         message: 'No se puede iniciar un preregistro cancelado'
+      });
+    }
+
+    if (preregistro.status === 'completado') {
+      return res.status(400).json({
+        ok: false,
+        message: 'Este preregistro ya fue completado'
       });
     }
 
@@ -870,10 +878,11 @@ async function patchIniciarPreregistro(req, res) {
     const guardiaId = req.user && req.user.id ? req.user.id : 1; // Usar 1 como ID por defecto si no hay usuario
     console.log('ID de guardia utilizado:', guardiaId);
     
-    // 1. Iniciar el preregistro y registrar entrada_caseta para todos los visitantes y vehículos
+    // 1. Iniciar el preregistro parcial con visitantes y vehículos seleccionados
     const resultado = await iniciarPreregistroMultiple(
       id,
-      visitantes,
+      visitantes || [],
+      vehiculos || [],
       guardiaId
     );
     
@@ -881,14 +890,19 @@ async function patchIniciarPreregistro(req, res) {
     const preregistroCompleto = await getPreregistroById(id);
     
     // 3. Obtener las etiquetas generadas para los visitantes
-    const visitantesConEtiquetas = await obtenerEtiquetasVisitantes(id, visitantes);
+    let visitantesConEtiquetas = [];
+    if (visitantes && visitantes.length > 0) {
+      visitantesConEtiquetas = await obtenerEtiquetasVisitantes(id, visitantes);
+    }
     
     res.json({
       ok: true,
-      message: 'Preregistro iniciado exitosamente',
+      message: 'Preregistro iniciado exitosamente (parcial)',
       data: {
         ...preregistroCompleto,
-        resultadosVisitantes: visitantesConEtiquetas
+        resultadosVisitantes: resultado.resultadosVisitantes,
+        resultadosVehiculos: resultado.resultadosVehiculos,
+        visitantesConEtiquetas
       }
     });
     

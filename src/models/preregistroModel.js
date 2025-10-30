@@ -193,6 +193,34 @@ async function obtenerPreregistros({
       `;
       const vehiculosResult = await pool.query(vehiculosQuery, [preregistro.id]);
       preregistro.vehiculos = vehiculosResult.rows;
+      
+      // Verificar si todos los visitantes y vehículos ya tienen entrada registrada
+      const bitacoraQuery = `
+        SELECT 
+          visitante_id,
+          vehiculo_id
+        FROM bitacora_preregistros
+        WHERE preregistro_id = $1 
+          AND tipo_evento IN ('entrada_caseta', 'entrada_edificio')
+      `;
+      const bitacoraResult = await pool.query(bitacoraQuery, [preregistro.id]);
+      const entradasRegistradas = bitacoraResult.rows;
+      
+      // Contar visitantes y vehículos con entrada
+      const visitantesConEntrada = new Set(
+        entradasRegistradas.filter(e => e.visitante_id).map(e => e.visitante_id)
+      );
+      const vehiculosConEntrada = new Set(
+        entradasRegistradas.filter(e => e.vehiculo_id).map(e => e.vehiculo_id)
+      );
+      
+      // Determinar si todos ya ingresaron
+      const totalVisitantes = preregistro.visitantes.length;
+      const totalVehiculos = preregistro.vehiculos.length;
+      const visitantesIngresados = visitantesConEntrada.size;
+      const vehiculosIngresados = vehiculosConEntrada.size;
+      
+      preregistro.todos_ingresaron = (visitantesIngresados === totalVisitantes) && (vehiculosIngresados === totalVehiculos);
     }
     
     const totalCount = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
@@ -605,6 +633,7 @@ async function verificarFotosFaltantes(preregistroId) {
               'id', pv.id,
               'visitante_id', v.id,
               'nombre', v.nombre,
+              'empresa', v.empresa,
               'foto_persona', v.foto_persona,
               'foto_ine', v.foto_ine,
               'fotos_faltantes', ARRAY[
@@ -642,6 +671,44 @@ async function verificarFotosFaltantes(preregistroId) {
       const preregistro = result.rows[0];
       const visitantes = preregistro.visitantes || [];
       const vehiculos = preregistro.vehiculos || [];
+      
+      // Verificar qué visitantes y vehículos ya tienen entrada registrada en bitácora
+      const bitacoraQuery = `
+        SELECT 
+          visitante_id,
+          vehiculo_id,
+          tipo_evento
+        FROM bitacora_preregistros
+        WHERE preregistro_id = $1 
+          AND tipo_evento IN ('entrada_caseta', 'entrada_edificio')
+      `;
+      
+      const bitacoraResult = await client.query(bitacoraQuery, [preregistroId]);
+      const entradasRegistradas = bitacoraResult.rows;
+      
+      // Marcar visitantes que ya tienen entrada
+      const visitantesConEntrada = new Set(
+        entradasRegistradas
+          .filter(e => e.visitante_id)
+          .map(e => e.visitante_id)
+      );
+      
+      // Marcar vehículos que ya tienen entrada
+      const vehiculosConEntrada = new Set(
+        entradasRegistradas
+          .filter(e => e.vehiculo_id)
+          .map(e => e.vehiculo_id)
+      );
+      
+      // Agregar información de entrada a visitantes
+      visitantes.forEach(visitante => {
+        visitante.tiene_entrada = visitantesConEntrada.has(visitante.visitante_id);
+      });
+      
+      // Agregar información de entrada a vehículos
+      vehiculos.forEach(vehiculo => {
+        vehiculo.tiene_entrada = vehiculosConEntrada.has(vehiculo.vehiculo_id);
+      });
       
       // Validar que haya al menos un visitante
       if (visitantes.length === 0) {
@@ -992,30 +1059,44 @@ async function cargarFotoVehiculo(vehiculoId, fotoPlaca) {
  * Iniciar preregistro y registrar entrada_caseta para múltiples visitantes y vehículos
  * @param {number} preregistroId - ID del preregistro a iniciar
  * @param {Array<number>} visitantesIds - Array de IDs de visitantes para registrar entrada_caseta
+ * @param {Array<number>} vehiculosIds - Array de IDs de vehículos para registrar entrada_caseta (opcional)
  * @param {number} guardiaId - ID del guardia que inicia el preregistro
  * @returns {Promise<Object>} Resultado de la operación
  */
-async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaId) {
+async function iniciarPreregistroMultiple(preregistroId, visitantesIds, vehiculosIds = [], guardiaId) {
   return withTransaction(async (client) => {
     try {
-      // 1. Actualizar estado del preregistro a 'iniciado'
-      const updatePreregistroQuery = `
-        UPDATE preregistros 
-        SET status = 'iniciado', updated_at = NOW() 
-        WHERE id = $1 
-        RETURNING *
+      // 1. Verificar si el preregistro ya está iniciado o completado
+      const checkPreregistroQuery = `
+        SELECT status FROM preregistros WHERE id = $1
       `;
+      const checkResult = await client.query(checkPreregistroQuery, [preregistroId]);
       
-      const preregistroResult = await client.query(updatePreregistroQuery, [preregistroId]);
-      
-      if (preregistroResult.rows.length === 0) {
+      if (checkResult.rows.length === 0) {
         throw new Error(`No se encontró el preregistro con ID ${preregistroId}`);
       }
       
+      const currentStatus = checkResult.rows[0].status;
+      
+      // 2. Actualizar estado del preregistro a 'iniciado' solo si está en 'listo' o 'pendiente'
+      // Si ya está 'iniciado', no lo cambiamos (permite inicio parcial)
+      let updateStatus = currentStatus;
+      if (currentStatus === 'listo' || currentStatus === 'pendiente') {
+        updateStatus = 'iniciado';
+      }
+      
+      const updatePreregistroQuery = `
+        UPDATE preregistros 
+        SET status = $1, updated_at = NOW() 
+        WHERE id = $2 
+        RETURNING *
+      `;
+      
+      const preregistroResult = await client.query(updatePreregistroQuery, [updateStatus, preregistroId]);
       const preregistro = preregistroResult.rows[0];
       const codigoPreregistro = preregistro.codigo;
       
-      // 2. Registrar entrada_caseta en la bitácora para cada visitante y generar etiquetas
+      // 3. Registrar entrada_caseta en la bitácora para cada visitante y generar etiquetas
       const resultadosVisitantes = [];
       let visitanteCounter = 1; // Contador para generar etiquetas secuenciales
       
@@ -1036,6 +1117,24 @@ async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaI
         }
         
         const visitante = visitanteResult.rows[0];
+        
+        // Verificar si ya tiene entrada_caseta registrada
+        const checkEntradaQuery = `
+          SELECT id FROM bitacora_preregistros
+          WHERE preregistro_id = $1 AND visitante_id = $2 AND tipo_evento = 'entrada_caseta'
+        `;
+        const entradaExistente = await client.query(checkEntradaQuery, [preregistroId, visitanteId]);
+        
+        if (entradaExistente.rows.length > 0) {
+          console.log(`El visitante ${visitanteId} ya tiene entrada_caseta registrada`);
+          resultadosVisitantes.push({
+            visitante_id: visitanteId,
+            nombre: visitante.nombre,
+            etiqueta: visitante.etiqueta,
+            mensaje: 'Ya tenía entrada registrada'
+          });
+          continue;
+        }
         
         // Generar etiqueta si no existe
         let etiqueta = visitante.etiqueta;
@@ -1077,70 +1176,104 @@ async function iniciarPreregistroMultiple(preregistroId, visitantesIds, guardiaI
         
         resultadosVisitantes.push({
           visitante_id: visitanteId,
+          nombre: visitante.nombre,
           etiqueta: etiqueta,
           bitacora: bitacoraVisitanteResult.rows[0]
         });
       }
       
-      // 3. Obtener todos los vehículos asociados al preregistro y registrar entrada_caseta para cada uno
-      const vehiculosQuery = `
-        SELECT v.*, pv.numero_marbete, pv.etiqueta
-        FROM vehiculos v
-        JOIN preregistro_vehiculos pv ON v.id = pv.vehiculo_id
-        WHERE pv.preregistro_id = $1
-      `;
-      
-      const vehiculosResult = await client.query(vehiculosQuery, [preregistroId]);
+      // 4. Registrar entrada_caseta solo para los vehículos seleccionados
       const resultadosVehiculos = [];
       
-      let vehiculoCounter = 1; // Contador para generar etiquetas secuenciales de vehículos
-      
-      for (const vehiculo of vehiculosResult.rows) {
-        // Generar etiqueta para el vehículo si no existe
-        let etiqueta = vehiculo.etiqueta;
-        if (!etiqueta) {
-          // Importar la función generateVisitorTag
-          const { generateVisitorTag } = require('../utils/codeGenerator');
-          // Usamos el mismo formato pero cambiamos V por A para indicar que es un vehículo (carro)
-          etiqueta = generateVisitorTag(codigoPreregistro, vehiculoCounter).replace('-V', '-A');
+      if (vehiculosIds && vehiculosIds.length > 0) {
+        let vehiculoCounter = 1; // Contador para generar etiquetas secuenciales de vehículos
+        
+        for (const vehiculoId of vehiculosIds) {
+          // Verificar que el vehículo exista y esté asociado al preregistro
+          const checkVehiculoQuery = `
+            SELECT v.*, pv.numero_marbete, pv.etiqueta
+            FROM vehiculos v
+            JOIN preregistro_vehiculos pv ON v.id = pv.vehiculo_id
+            WHERE pv.preregistro_id = $1 AND v.id = $2
+          `;
           
-          // Actualizar la etiqueta en la tabla preregistro_vehiculos
-          const updateEtiquetaVehiculoQuery = `
-            UPDATE preregistro_vehiculos
-            SET etiqueta = $1
-            WHERE preregistro_id = $2 AND vehiculo_id = $3
+          const vehiculoResult = await client.query(checkVehiculoQuery, [preregistroId, vehiculoId]);
+          
+          if (vehiculoResult.rows.length === 0) {
+            console.warn(`El vehículo con ID ${vehiculoId} no está asociado al preregistro ${preregistroId}`);
+            continue;
+          }
+          
+          const vehiculo = vehiculoResult.rows[0];
+          
+          // Verificar si ya tiene entrada_caseta registrada
+          const checkEntradaVehiculoQuery = `
+            SELECT id FROM bitacora_preregistros
+            WHERE preregistro_id = $1 AND vehiculo_id = $2 AND tipo_evento = 'entrada_caseta'
+          `;
+          const entradaVehiculoExistente = await client.query(checkEntradaVehiculoQuery, [preregistroId, vehiculoId]);
+          
+          if (entradaVehiculoExistente.rows.length > 0) {
+            console.log(`El vehículo ${vehiculoId} ya tiene entrada_caseta registrada`);
+            resultadosVehiculos.push({
+              vehiculo_id: vehiculoId,
+              placa: vehiculo.placa,
+              etiqueta: vehiculo.etiqueta,
+              codigo_vehiculo: vehiculo.etiqueta,
+              numero_marbete: vehiculo.numero_marbete,
+              mensaje: 'Ya tenía entrada registrada'
+            });
+            continue;
+          }
+          
+          // Generar etiqueta para el vehículo si no existe
+          let etiqueta = vehiculo.etiqueta;
+          if (!etiqueta) {
+            // Importar la función generateVisitorTag
+            const { generateVisitorTag } = require('../utils/codeGenerator');
+            // Usamos el mismo formato pero cambiamos V por A para indicar que es un vehículo (carro)
+            etiqueta = generateVisitorTag(codigoPreregistro, vehiculoCounter).replace('-V', '-A');
+            
+            // Actualizar la etiqueta en la tabla preregistro_vehiculos
+            const updateEtiquetaVehiculoQuery = `
+              UPDATE preregistro_vehiculos
+              SET etiqueta = $1
+              WHERE preregistro_id = $2 AND vehiculo_id = $3
+              RETURNING *
+            `;
+            
+            await client.query(updateEtiquetaVehiculoQuery, [etiqueta, preregistroId, vehiculoId]);
+            vehiculoCounter++;
+          }
+          
+          // Registrar entrada_caseta en la bitácora para el vehículo
+          const bitacoraVehiculoQuery = `
+            INSERT INTO bitacora_preregistros (
+              preregistro_id, 
+              vehiculo_id, 
+              guardia_id, 
+              tipo_evento, 
+              timestamp
+            )
+            VALUES ($1, $2, $3, 'entrada_caseta', NOW())
             RETURNING *
           `;
           
-          await client.query(updateEtiquetaVehiculoQuery, [etiqueta, preregistroId, vehiculo.id]);
-          vehiculoCounter++;
+          const bitacoraVehiculoResult = await client.query(bitacoraVehiculoQuery, [
+            preregistroId,
+            vehiculoId,
+            guardiaId
+          ]);
+          
+          resultadosVehiculos.push({
+            vehiculo_id: vehiculoId,
+            placa: vehiculo.placa,
+            etiqueta: etiqueta,
+            codigo_vehiculo: etiqueta,
+            numero_marbete: vehiculo.numero_marbete,
+            bitacora: bitacoraVehiculoResult.rows[0]
+          });
         }
-        
-        // Registrar entrada_caseta en la bitácora para el vehículo
-        const bitacoraVehiculoQuery = `
-          INSERT INTO bitacora_preregistros (
-            preregistro_id, 
-            vehiculo_id, 
-            guardia_id, 
-            tipo_evento, 
-            timestamp
-          )
-          VALUES ($1, $2, $3, 'entrada_caseta', NOW())
-          RETURNING *
-        `;
-        
-        const bitacoraVehiculoResult = await client.query(bitacoraVehiculoQuery, [
-          preregistroId,
-          vehiculo.id,
-          guardiaId
-        ]);
-        
-        resultadosVehiculos.push({
-          vehiculo_id: vehiculo.id,
-          etiqueta: etiqueta,
-          numero_marbete: vehiculo.numero_marbete,
-          bitacora: bitacoraVehiculoResult.rows[0]
-        });
       }
       
       return {
